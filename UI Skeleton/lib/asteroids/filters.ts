@@ -1,4 +1,5 @@
 import type { AsteroidDataset } from './types'
+import { CATEGORY_IDS } from './class-colors'
 
 /**
  * A range whose ends equal the slider domain is open-ended on that side,
@@ -11,13 +12,22 @@ export interface RangeFilter {
 }
 
 export interface AsteroidFilters {
-  /** Class indices into dataset.classes. Empty means all classes. */
+  /**
+   * Selected (class, category) pairs, encoded as classGroupKey(classIndex, categoryIndex).
+   * A mixed class such as X can be selected separately within each category.
+   * Empty means all.
+   */
   classes: number[]
+  /** Region indices into REGIONS. Empty means all regions. */
+  regions: number[]
   a: RangeFilter
   /** Expressed in log10(km). */
   diameterLog: RangeFilter
   inclination: RangeFilter
 }
+
+export const classGroupKey = (classIndex: number, categoryIndex: number) =>
+  classIndex * CATEGORY_IDS.length + categoryIndex
 
 const A_DOMAIN_CAP = 6
 const INCLINATION_DOMAIN_CAP = 60
@@ -33,6 +43,7 @@ export function defaultFilters(dataset: AsteroidDataset | null): AsteroidFilters
   if (!dataset) {
     return {
       classes: [],
+      regions: [],
       a: openRange(1.5, 5.5),
       diameterLog: openRange(-1, 3),
       inclination: openRange(0, 40),
@@ -47,6 +58,7 @@ export function defaultFilters(dataset: AsteroidDataset | null): AsteroidFilters
   const iMax = Math.max(iMin + 1, Math.min(roundUp(inclination.max, 1), INCLINATION_DOMAIN_CAP))
   return {
     classes: [],
+    regions: [],
     a: openRange(aMin, aMax),
     diameterLog: openRange(dMin, dMax),
     inclination: openRange(iMin, iMax),
@@ -67,6 +79,7 @@ function bounds(range: RangeFilter): [number, number] {
 export function applyFilters(dataset: AsteroidDataset, filters: AsteroidFilters): Uint8Array {
   const mask = new Uint8Array(dataset.count)
   const classSet = filters.classes.length > 0 ? new Set(filters.classes) : null
+  const regionSet = filters.regions.length > 0 ? new Set(filters.regions) : null
   const [aLo, aHi] = bounds(filters.a)
   const [iLo, iHi] = bounds(filters.inclination)
   const diameterActive = isRangeActive(filters.diameterLog)
@@ -74,9 +87,10 @@ export function applyFilters(dataset: AsteroidDataset, filters: AsteroidFilters)
   const dLo = Number.isFinite(dLogLo) ? 10 ** dLogLo : -Infinity
   const dHi = Number.isFinite(dLogHi) ? 10 ** dLogHi : Infinity
 
-  const { a, inclination, diameter, taxonomy } = dataset
+  const { a, inclination, diameter, taxonomy, category, region } = dataset
   for (let k = 0; k < dataset.count; k++) {
-    if (classSet && !classSet.has(taxonomy[k])) continue
+    if (classSet && !classSet.has(classGroupKey(taxonomy[k], category[k]))) continue
+    if (regionSet && !regionSet.has(region[k])) continue
     const ak = a[k]
     if (ak < aLo || ak > aHi) continue
     const ik = inclination[k]

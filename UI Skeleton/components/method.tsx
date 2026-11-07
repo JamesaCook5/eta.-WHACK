@@ -1,22 +1,22 @@
 const CARDS = [
   {
     title: 'Resource mapping',
-    body: 'Each taxonomic class is mapped to the resource it is likely to contain. The current mapping is a placeholder grouping by spectral complex and carries no yield estimates.',
+    body: 'Each asteroid is placed in a composition category: Carbon supplies water and volatiles, Metallic supplies metals, Silicates supply bulk silicate. Classes that could be more than one (featureless X-types, and labels such as CX or SQ) are split by each asteroid’s albedo. No yield estimates are used yet.',
     file: 'lib/mission/resources.ts',
   },
   {
-    title: 'Transfer cost',
-    body: 'Δv and transfer time are estimated with a Hohmann transfer between circular orbits plus a plane change. Eccentricity, phasing and launch windows are not yet modelled.',
+    title: 'Placement',
+    body: 'Where a station goes is set with the map filters: orbital region, semi-major axis, inclination and size. Launch and transfer from Earth are out of scope.',
+    file: 'lib/asteroids/regions.ts',
+  },
+  {
+    title: 'Manufacturing cost',
+    body: 'Until the cost model exists, candidates are ranked on two proxies: body size as a stand-in for available feedstock, and sunlight at the orbit (falling as 1/a²) as a stand-in for processing power. The slider sets the balance.',
     file: 'lib/mission/scoring.ts',
   },
   {
-    title: 'Ranking',
-    body: 'Asteroids that pass the filters, match the target resource and fit the Δv budget and mission duration are ranked by the share of the budget they leave unused.',
-    file: 'lib/mission/rank.ts',
-  },
-  {
-    title: 'Routing',
-    body: 'Multi-stop routes between stations are not implemented. Candidates are scored independently from the starting body.',
+    title: 'Networks',
+    body: 'Stations are scored one at a time. How several stations would share material between them is not modelled yet.',
     file: null,
   },
 ]

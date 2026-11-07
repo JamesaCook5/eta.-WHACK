@@ -1,6 +1,7 @@
 import { Analytics } from '@vercel/analytics/next'
 import type { Metadata, Viewport } from 'next'
 import { Inter, Space_Grotesk } from 'next/font/google'
+import { SpaceBackground } from '@/components/space-background'
 import './globals.css'
 
 const inter = Inter({ subsets: ['latin'], variable: '--font-inter', display: 'swap' })
@@ -27,7 +28,7 @@ export const metadata: Metadata = {
 
 export const viewport: Viewport = {
   colorScheme: 'dark',
-  themeColor: '#0e0e0e',
+  themeColor: '#05070b',
 }
 
 export default function RootLayout({
@@ -37,10 +38,8 @@ export default function RootLayout({
 }>) {
   return (
     <html lang="en" className={`${inter.variable} ${spaceGrotesk.variable}`}>
-      <head>
-        <link rel="preload" as="image" href="/images/background.avif" type="image/avif" />
-      </head>
       <body>
+        <SpaceBackground />
         {children}
         {process.env.NODE_ENV === 'production' && <Analytics />}
       </body>

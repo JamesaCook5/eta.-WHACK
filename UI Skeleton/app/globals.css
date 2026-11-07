@@ -5,7 +5,7 @@
 @custom-variant dark (&:is(.dark *));
 
 :root {
-  --background: #0e0e0e;
+  --background: #05070b;
   --foreground: #ffffff;
   --card: rgba(255, 255, 255, 0.06);
   --card-foreground: #ffffff;
@@ -22,8 +22,8 @@
   --destructive: #ff6b6b;
   --border: rgba(255, 255, 255, 0.08);
   --input: rgba(255, 255, 255, 0.08);
-  --ring: #ffb547;
-  --signal: #ffb547;
+  --ring: #52cbff;
+  --signal: #52cbff;
   --map-panel: #070707;
   --radius: 6px;
 }
@@ -68,16 +68,8 @@
   }
   body {
     @apply text-foreground font-sans antialiased;
+    /* Shown until the WebGL background draws, and if WebGL is unavailable. */
     background-color: var(--background);
-    background-image: url('/images/background.webp');
-    background-image: image-set(
-      url('/images/background.avif') type('image/avif'),
-      url('/images/background.webp') type('image/webp')
-    );
-    background-size: cover;
-    background-position: 70% top;
-    background-repeat: no-repeat;
-    background-attachment: scroll;
   }
   :focus-visible {
     outline: 2px solid var(--signal);

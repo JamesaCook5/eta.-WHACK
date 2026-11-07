@@ -21,7 +21,15 @@ function rows(r: AsteroidRecord): [string, string][] {
   ]
 }
 
-export function SelectedPanel({ record, onClear }: { record: AsteroidRecord | null; onClear: () => void }) {
+export function SelectedPanel({
+  record,
+  category,
+  onClear,
+}: {
+  record: AsteroidRecord | null
+  category: string | null
+  onClear: () => void
+}) {
   return (
     <section aria-labelledby="selected-label" aria-live="polite" className="glass rounded-md p-5">
       <div className="flex items-center justify-between">
@@ -36,7 +44,7 @@ export function SelectedPanel({ record, onClear }: { record: AsteroidRecord | nu
       </div>
       {record ? (
         <dl className="mt-3 grid grid-cols-[auto_1fr] gap-x-4 gap-y-1.5 font-mono text-xs tabular-nums">
-          {rows(record).map(([k, v]) => (
+          {[...rows(record), ['category', category ?? '—'] as [string, string]].map(([k, v]) => (
             <div key={k} className="contents">
               <dt className="text-muted-foreground">{k}</dt>
               <dd className="truncate text-right text-white">{v}</dd>

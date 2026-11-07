@@ -1,12 +1,15 @@
 /**
- * PLACEHOLDER MODULE — resource-to-taxonomy mapping.
+ * PLACEHOLDER MODULE — resource-to-composition mapping.
  *
  * Replace this file with the real mapping. The rest of the app only depends on
- * `RESOURCES`, `ResourceId` and `taxonomyMatchesResource`.
+ * `RESOURCES`, `ResourceId` and `categoryMatchesResource`.
  *
- * The current mapping is a qualitative grouping by the leading letter of the
- * taxonomic class (Tholen / Bus-DeMeo complexes). It carries no yield values.
+ * Each product draws on one composition category. Asteroids get their category
+ * from their class and albedo (asteroidCategory in lib/asteroids/class-colors.ts),
+ * so e.g. a moderate-albedo X-type counts towards metals. No yield values are used.
  */
+
+import type { CategoryId } from '@/lib/asteroids/class-colors'
 
 export const RESOURCES = [
   { id: 'water', label: 'Water / volatiles' },
@@ -16,14 +19,12 @@ export const RESOURCES = [
 
 export type ResourceId = (typeof RESOURCES)[number]['id']
 
-const COMPLEXES_BY_RESOURCE: Record<ResourceId, readonly string[]> = {
-  water: ['C', 'B', 'D', 'F', 'G', 'P', 'T'],
-  metals: ['M', 'X', 'E'],
-  silicates: ['S', 'Q', 'V', 'A', 'K', 'L', 'O', 'R'],
+const CATEGORY_BY_RESOURCE: Record<ResourceId, CategoryId> = {
+  water: 'carbon',
+  metals: 'metallic',
+  silicates: 'silicate',
 }
 
-export function taxonomyMatchesResource(taxonomyClass: string | null, resource: ResourceId): boolean {
-  if (!taxonomyClass) return false
-  const complex = taxonomyClass.charAt(0).toUpperCase()
-  return COMPLEXES_BY_RESOURCE[resource].includes(complex)
+export function categoryMatchesResource(category: CategoryId, resource: ResourceId): boolean {
+  return CATEGORY_BY_RESOURCE[resource] === category
 }

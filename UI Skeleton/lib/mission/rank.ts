@@ -1,6 +1,6 @@
 import type { AsteroidDataset } from '@/lib/asteroids/types'
-import { startBodySemiMajorAxis } from './bodies'
-import { explainScore, scoreAsteroid, type MissionParams, type ScoreDriver } from './scoring'
+import { CATEGORY_IDS } from '@/lib/asteroids/class-colors'
+import { explainScore, relativeSolarFlux, scoreAsteroid, type ScoreDriver, type StationParams } from './scoring'
 
 export interface RankedCandidate {
   index: number
@@ -12,22 +12,21 @@ export interface RankedCandidate {
 export function rankCandidates(
   dataset: AsteroidDataset,
   mask: Uint8Array,
-  mission: MissionParams,
+  station: StationParams,
 ): RankedCandidate[] {
-  const ctx = { startA: startBodySemiMajorAxis(mission.startBody, mission.customA), mission }
-  const n = Math.max(1, Math.floor(mission.topN))
+  const d = dataset.domains.diameter
+  const ctx = {
+    station,
+    diameterLog: [Math.log10(Math.max(d.min, 1e-3)), Math.log10(Math.max(d.max, 1e-3))] as [number, number],
+    maxFlux: relativeSolarFlux(Math.max(dataset.domains.a.min, 0.1)),
+  }
+  const n = Math.max(1, Math.floor(station.topN))
   const top: { index: number; score: number }[] = []
 
   for (let k = 0; k < dataset.count; k++) {
     if (mask[k] === 0) continue
-    const score = scoreAsteroid(
-      {
-        a: dataset.a[k],
-        inclinationDeg: dataset.inclination[k],
-        taxonomyClass: dataset.records[k].taxonomy_class,
-      },
-      ctx,
-    )
+    const r = dataset.records[k]
+    const score = scoreAsteroid({ a: r.a, diameterKm: r.diameter_km, category: CATEGORY_IDS[dataset.category[k]] }, ctx)
     if (score === null) continue
     if (top.length === n && score <= top[n - 1].score) continue
 
@@ -40,6 +39,6 @@ export function rankCandidates(
   return top.map(({ index, score }) => ({
     index,
     score,
-    drivers: explainScore(dataset.records[index], ctx),
+    drivers: explainScore(dataset.records[index], dataset.region[index], CATEGORY_IDS[dataset.category[index]]),
   }))
 }

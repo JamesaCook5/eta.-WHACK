@@ -1,4 +1,6 @@
 import { UNCLASSIFIED, type AsteroidDataset, type AsteroidRecord } from './types'
+import { REGIONS, regionIndex } from './regions'
+import { CATEGORY_IDS, asteroidCategory } from './class-colors'
 
 /** Static, preprocessed subset of the IMCCE SsODNet ssoBFT table. */
 export const DATASET_URL = '/data/asteroids.json'
@@ -39,6 +41,7 @@ function normaliseRecord(raw: Record<string, unknown>): AsteroidRecord | null {
     taxonomy_class: taxonomy.length > 0 ? taxonomy : null,
     diameter_km: toNumber(raw.diameter_km),
     albedo: toNumber(raw.albedo),
+    orbit_class: typeof raw.orbit_class === 'string' && raw.orbit_class.length > 0 ? raw.orbit_class : null,
   }
 }
 
@@ -56,6 +59,9 @@ export function buildDataset(rawRecords: Record<string, unknown>[]): AsteroidDat
   const inclination = new Float32Array(count)
   const diameter = new Float32Array(count)
   const taxonomy = new Uint16Array(count)
+  const region = new Uint8Array(count)
+  const category = new Uint8Array(count)
+  const regionCounts = REGIONS.map(() => 0)
 
   const classIndex = new Map<string, number>([[UNCLASSIFIED, 0]])
   const classes = [UNCLASSIFIED]
@@ -88,6 +94,12 @@ export function buildDataset(rawRecords: Record<string, unknown>[]): AsteroidDat
     taxonomy[k] = idx
     classCounts[idx]++
 
+    category[k] = CATEGORY_IDS.indexOf(asteroidCategory(r.taxonomy_class, r.albedo))
+
+    const ri = regionIndex(r.orbit_class)
+    region[k] = ri < 0 ? 255 : ri
+    if (ri >= 0) regionCounts[ri]++
+
     if (r.a < aMin) aMin = r.a
     if (r.a > aMax) aMax = r.a
     if (r.i < iMin) iMin = r.i
@@ -109,6 +121,9 @@ export function buildDataset(rawRecords: Record<string, unknown>[]): AsteroidDat
     taxonomy,
     classes,
     classCounts,
+    category,
+    region,
+    regionCounts,
     domains: {
       a: { min: Number.isFinite(aMin) ? aMin : 0, max: Number.isFinite(aMax) ? aMax : 1 },
       diameter: { min: Number.isFinite(dMin) ? dMin : 0.1, max: Number.isFinite(dMax) ? dMax : 1 },

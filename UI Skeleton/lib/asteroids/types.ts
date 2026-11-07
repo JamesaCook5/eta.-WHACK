@@ -10,6 +10,8 @@ export interface AsteroidRecord {
   taxonomy_class: string | null
   diameter_km: number | null
   albedo: number | null
+  /** SsODNet dynamical class, e.g. "MB>Inner". */
+  orbit_class: string | null
 }
 
 export interface NumericDomain {
@@ -35,6 +37,11 @@ export interface AsteroidDataset {
   taxonomy: Uint16Array
   classes: string[]
   classCounts: number[]
+  /** Index into CATEGORY_IDS (lib/asteroids/class-colors.ts), one per asteroid. */
+  category: Uint8Array
+  /** Index into REGIONS (lib/asteroids/regions.ts); 255 when unknown. */
+  region: Uint8Array
+  regionCounts: number[]
   domains: {
     a: NumericDomain
     diameter: NumericDomain

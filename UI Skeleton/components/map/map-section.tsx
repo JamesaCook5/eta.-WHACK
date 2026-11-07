@@ -1,11 +1,12 @@
 'use client'
 
-import { useDeferredValue, useMemo, useState } from 'react'
+import { useCallback, useDeferredValue, useEffect, useMemo, useRef, useState } from 'react'
 import useSWR from 'swr'
+import { cn } from '@/lib/utils'
 import { DATASET_URL, DatasetMissingError, loadDataset } from '@/lib/asteroids/load'
 import { applyFilters, defaultFilters, type AsteroidFilters } from '@/lib/asteroids/filters'
 import { rankCandidates } from '@/lib/mission/rank'
-import type { MissionParams } from '@/lib/mission/scoring'
+import type { StationParams } from '@/lib/mission/scoring'
 import { Sheet, SheetContent, SheetTitle, SheetTrigger } from '@/components/ui/sheet'
 import { MapCanvas } from './map-canvas'
 import { ControlsPanel } from './controls-panel'
@@ -13,14 +14,61 @@ import { CandidatesPanel } from './candidates-panel'
 import { SelectedPanel } from './selected-panel'
 import { SupplyPanel } from './supply-panel'
 import { estimateFeedstock, MATERIAL_SUPPLY_URL, loadMaterialSupply, type MaterialSupplyModel } from '@/lib/mission/material-supply'
+import { CATEGORY_IDS, categoryLabel } from '@/lib/asteroids/class-colors'
 
-const DEFAULT_MISSION: MissionParams = {
-  startBody: 'earth',
-  customA: 2.2,
-  deltaVBudget: 10,
-  durationDays: 900,
-  resource: 'water',
+const DEFAULT_STATION: StationParams = {
+  product: 'water',
+  feedstockWeight: 0.5,
   topN: 10,
+}
+
+/**
+ * Full screen for the map and both sidebars. Uses the Fullscreen API where the
+ * browser supports it on elements; otherwise (e.g. iPhone Safari) the shell is
+ * pinned over the page with CSS.
+ */
+function useFullscreen(ref: React.RefObject<HTMLElement | null>) {
+  const [active, setActive] = useState(false)
+  const [native, setNative] = useState(false)
+
+  useEffect(() => {
+    const onChange = () => {
+      const isFull = document.fullscreenElement === ref.current
+      setNative(isFull)
+      if (!isFull) setActive(false)
+    }
+    document.addEventListener('fullscreenchange', onChange)
+    return () => document.removeEventListener('fullscreenchange', onChange)
+  }, [ref])
+
+  // CSS fallback: lock page scroll and close on Escape.
+  useEffect(() => {
+    if (!active || native) return
+    const previous = document.body.style.overflow
+    document.body.style.overflow = 'hidden'
+    const onKey = (e: KeyboardEvent) => e.key === 'Escape' && setActive(false)
+    window.addEventListener('keydown', onKey)
+    return () => {
+      document.body.style.overflow = previous
+      window.removeEventListener('keydown', onKey)
+    }
+  }, [active, native])
+
+  const toggle = useCallback(async () => {
+    const el = ref.current
+    if (!el) return
+    if (active) {
+      if (document.fullscreenElement) await document.exitFullscreen().catch(() => {})
+      setActive(false)
+      return
+    }
+    setActive(true)
+    if (el.requestFullscreen && document.fullscreenEnabled) {
+      await el.requestFullscreen().catch(() => setNative(false))
+    }
+  }, [active, ref])
+
+  return { active, toggle }
 }
 
 export function MapSection() {
@@ -34,36 +82,42 @@ export function MapSection() {
     shouldRetryOnError: false,
   })
   const [filterState, setFilterState] = useState<AsteroidFilters | null>(null)
-  const [mission, setMission] = useState<MissionParams>(DEFAULT_MISSION)
-  const [hovered, setHovered] = useState(-1)
-  const [selected, setSelected] = useState(-1)
   const [supplyMode, setSupplyMode] = useState(false)
   const [mineralId, setMineralId] = useState('hydrated_phyllosilicates')
+  const [station, setStation] = useState<StationParams>(DEFAULT_STATION)
+  const [hovered, setHovered] = useState(-1)
+  const [selected, setSelected] = useState(-1)
+  const shellRef = useRef<HTMLDivElement>(null)
+  const fullscreen = useFullscreen(shellRef)
+  const [portalContainer, setPortalContainer] = useState<HTMLElement | null>(null)
+  useEffect(() => setPortalContainer(shellRef.current), [])
 
   const filters = filterState ?? defaultFilters(dataset ?? null)
   const deferredFilters = useDeferredValue(filters)
-  const deferredMission = useDeferredValue(mission)
+  const deferredStation = useDeferredValue(station)
 
   const mask = useMemo(
     () => (dataset ? applyFilters(dataset, deferredFilters) : null),
     [dataset, deferredFilters],
   )
   const ranked = useMemo(
-    () => (dataset && mask ? rankCandidates(dataset, mask, deferredMission) : []),
-    [dataset, mask, deferredMission],
+    () => (dataset && mask ? rankCandidates(dataset, mask, deferredStation) : []),
+    [dataset, mask, deferredStation],
   )
   const candidateIndices = useMemo(() => ranked.map((c) => c.index), [ranked])
   const supplyRows = useMemo(
-    () => dataset && supplyModel ? estimateFeedstock(dataset, supplyModel, mineralId, mask) : [],
+    () => (dataset && supplyModel ? estimateFeedstock(dataset, supplyModel, mineralId, mask) : []),
     [dataset, supplyModel, mineralId, mask],
   )
+  // Supply layer: only bodies with an estimated feedstock for the chosen mineral stay bright.
   const mapMask = useMemo(() => {
     if (!supplyMode || !dataset) return mask
     const visible = new Uint8Array(dataset.count)
     for (const row of supplyRows) visible[row.index] = 1
     return visible
   }, [dataset, mask, supplyMode, supplyRows])
-  const mapHighlights = supplyMode ? supplyRows.map((row) => row.index) : candidateIndices
+  // Station rings only make sense for candidates; thousands of supply bodies would cover the map.
+  const mapHighlights = supplyMode ? [] : candidateIndices
   const visibleCount = useMemo(() => (mask ? mask.reduce((n, v) => n + v, 0) : 0), [mask])
 
   const emptyMessage = isLoading
@@ -80,49 +134,86 @@ export function MapSection() {
       filters={filters}
       onFiltersChange={setFilterState}
       onResetFilters={() => setFilterState(null)}
-      mission={mission}
-      onMissionChange={setMission}
+      station={station}
+      onStationChange={setStation}
     />
   )
 
+  const full = fullscreen.active
+  const panelHeight = full ? 'lg:h-full lg:max-h-none' : 'lg:max-h-[46rem]'
+
   return (
     <section id="map" aria-labelledby="map-title" className="px-4 py-24">
-      <div className="mx-auto max-w-7xl">
-        <div className="flex flex-wrap items-end justify-between gap-4">
-          <h2 id="map-title" className="font-display text-3xl font-medium tracking-tight sm:text-4xl">
+      <div
+        ref={shellRef}
+        className={cn(
+          'mx-auto max-w-7xl',
+          full && 'fixed inset-0 z-50 flex max-w-none flex-col overflow-y-auto bg-[#05070b] p-3 sm:p-4 lg:overflow-hidden',
+        )}
+      >
+        <div className="flex flex-wrap items-center justify-between gap-x-4 gap-y-2">
+          <h2
+            id="map-title"
+            className={cn('font-display font-medium tracking-tight', full ? 'text-xl' : 'text-3xl sm:text-4xl')}
+          >
             Asteroid map
           </h2>
-          <p className="font-mono text-xs text-muted-foreground tabular-nums" aria-live="polite">
-            {dataset
-              ? supplyMode
-                ? `${supplyRows.length.toLocaleString()} mapped ${supplyModel?.minerals[mineralId]?.label.toLowerCase() ?? 'feedstock'} bodies`
-                : `${visibleCount.toLocaleString()} of ${dataset.count.toLocaleString()} match filters`
-              : 'No data'}
-          </p>
+          <div className="flex items-center gap-4">
+            <p className="font-mono text-xs text-muted-foreground tabular-nums" aria-live="polite">
+              {dataset
+                ? supplyMode
+                  ? `${supplyRows.length.toLocaleString()} mapped ${supplyModel?.minerals[mineralId]?.label.toLowerCase() ?? 'feedstock'} bodies`
+                  : `${visibleCount.toLocaleString()} of ${dataset.count.toLocaleString()} match filters`
+                : 'No data'}
+            </p>
+            <button type="button" onClick={fullscreen.toggle} className="btn glass btn-glass h-8 px-3 text-xs">
+              {full ? 'Exit full screen' : 'Full screen'}
+            </button>
+          </div>
         </div>
 
-        <div className="mt-5 inline-flex rounded-md border border-white/10 bg-black/20 p-1" role="group" aria-label="Map layer">
-          <button type="button" aria-pressed={!supplyMode} onClick={() => setSupplyMode(false)} className={`rounded px-3 py-1.5 text-xs transition-colors ${!supplyMode ? 'bg-white text-black' : 'text-white/70 hover:text-white'}`}>Mission candidates</button>
-          <button type="button" aria-pressed={supplyMode} onClick={() => setSupplyMode(true)} className={`rounded px-3 py-1.5 text-xs transition-colors ${supplyMode ? 'bg-signal text-black' : 'text-white/70 hover:text-white'}`}>Material supply</button>
+        <div className="mt-4 inline-flex gap-1 rounded-md bg-white/5 p-1" role="group" aria-label="Map layer">
+          <button
+            type="button"
+            aria-pressed={!supplyMode}
+            onClick={() => setSupplyMode(false)}
+            className={cn('h-8 rounded-md px-3 text-xs transition-colors', !supplyMode ? 'bg-white text-[#0e0e0e]' : 'text-white/75 hover:bg-white/10 hover:text-white')}
+          >
+            Station candidates
+          </button>
+          <button
+            type="button"
+            aria-pressed={supplyMode}
+            onClick={() => setSupplyMode(true)}
+            className={cn('h-8 rounded-md px-3 text-xs transition-colors', supplyMode ? 'bg-white text-[#0e0e0e]' : 'text-white/75 hover:bg-white/10 hover:text-white')}
+          >
+            Material supply
+          </button>
         </div>
 
-        <div className="mt-8 grid gap-4 lg:grid-cols-[17rem_minmax(0,1fr)_20rem]">
-          <aside aria-label="Map controls" className="glass hidden rounded-md lg:block">
-            <div className="max-h-[46rem] overflow-y-auto p-5">{controls}</div>
+        <div
+          className={cn(
+            'grid gap-4 lg:grid-cols-[17rem_minmax(0,1fr)_20rem]',
+            full ? 'mt-3 lg:min-h-0 lg:flex-1 lg:grid-rows-[minmax(0,1fr)]' : 'mt-6',
+          )}
+        >
+          <aside aria-label="Map controls" className={cn('glass hidden min-h-0 rounded-md lg:block', panelHeight)}>
+            <div className={cn('overflow-y-auto p-5', full ? 'h-full' : 'max-h-[46rem]')}>{controls}</div>
           </aside>
 
-          <div className="flex flex-col gap-3">
+          <div className="flex min-h-0 flex-col gap-3">
             <Sheet>
-              <SheetTrigger className="btn glass btn-glass w-full lg:hidden">Filters and mission</SheetTrigger>
+              <SheetTrigger className="btn glass btn-glass w-full lg:hidden">Filters and station</SheetTrigger>
               <SheetContent
                 side="bottom"
+                container={portalContainer}
                 className="max-h-[85svh] overflow-y-auto rounded-t-md border-0 bg-[#141414] p-5 pt-6 text-white shadow-none"
               >
-                <SheetTitle className="sr-only">Filters and mission</SheetTitle>
+                <SheetTitle className="sr-only">Filters and station</SheetTitle>
                 {controls}
               </SheetContent>
             </Sheet>
-            <div className="h-[62svh] min-h-80 lg:h-[46rem]">
+            <div className={cn(full ? 'h-[75svh] min-h-80 lg:h-auto lg:min-h-0 lg:flex-1' : 'h-[62svh] min-h-80 lg:h-[46rem]')}>
               <MapCanvas
                 dataset={dataset ?? null}
                 mask={mapMask}
@@ -131,20 +222,25 @@ export function MapSection() {
                 selected={selected}
                 onHover={setHovered}
                 onSelect={setSelected}
-                startBody={mission.startBody}
-                customA={mission.customA}
                 emptyMessage={emptyMessage}
               />
             </div>
           </div>
 
-          <div className="flex min-h-0 flex-col gap-4 lg:max-h-[46rem]">
+          <div className={cn('flex min-h-0 flex-col gap-4', panelHeight, supplyMode && 'overflow-y-auto')}>
             <SelectedPanel
               record={dataset && selected >= 0 ? dataset.records[selected] : null}
+              category={dataset && selected >= 0 ? categoryLabel(CATEGORY_IDS[dataset.category[selected]]) : null}
               onClear={() => setSelected(-1)}
             />
             {supplyMode ? (
-              <SupplyPanel dataset={dataset ?? null} model={supplyModel ?? null} mineralId={mineralId} onMineralChange={setMineralId} mask={mask} />
+              <SupplyPanel
+                dataset={dataset ?? null}
+                model={supplyModel ?? null}
+                mineralId={mineralId}
+                onMineralChange={setMineralId}
+                mask={mask}
+              />
             ) : (
               <CandidatesPanel
                 dataset={dataset ?? null}

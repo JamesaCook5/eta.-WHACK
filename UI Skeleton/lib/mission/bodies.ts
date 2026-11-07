@@ -1,5 +1,3 @@
-export type StartBodyId = 'earth' | 'mars' | 'custom'
-
 export interface OrbitElements {
   /** Semi-major axis, au. */
   a: number
@@ -14,9 +12,6 @@ export const PLANET_ORBITS: Record<'earth' | 'mars', OrbitElements & { label: st
   mars: { label: 'Mars', a: 1.52371034, e: 0.0933941, varpi: -23.94362959 },
 }
 
-export function startBodySemiMajorAxis(body: StartBodyId, customA: number): number {
-  return body === 'custom' ? customA : PLANET_ORBITS[body].a
-}
 
 /** Ellipse with the Sun at one focus, projected onto the ecliptic plane. */
 export function orbitPolyline(orbit: OrbitElements, segments = 256): Float32Array {

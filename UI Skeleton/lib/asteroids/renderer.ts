@@ -15,6 +15,7 @@ export interface OrbitLine {
 const POINT_VERT = `#version 300 es
 in vec2 aPos;
 in float aState;
+in vec3 aColor;
 uniform vec2 uCenter;
 uniform float uScale;
 uniform vec2 uViewport;
@@ -22,26 +23,30 @@ uniform float uSize;
 uniform int uPass;
 uniform int uHover;
 uniform int uSelected;
-uniform vec3 uBase;
 uniform vec3 uAccent;
 out vec4 vColor;
 out float vSize;
+out float vRing;
 void main() {
   vec2 p = (aPos - uCenter) * uScale;
   gl_Position = vec4(p / (uViewport * 0.5), 0.0, 1.0);
   float size;
+  vRing = 0.0;
   if (uPass == 0) {
+    // Coloured by taxonomic class; filtered-out asteroids stay as a faint trace.
     size = uSize;
-    vColor = vec4(uBase, aState > 0.5 ? 0.8 : 0.15);
+    vColor = vec4(aColor, aState > 0.5 ? 0.78 : 0.1);
   } else if (gl_VertexID == uSelected) {
-    size = uSize * 3.2;
-    vColor = vec4(uAccent, 1.0);
+    size = uSize * 3.4;
+    vColor = vec4(1.0, 1.0, 1.0, 1.0);
   } else if (gl_VertexID == uHover) {
     size = uSize * 3.0;
     vColor = vec4(1.0, 1.0, 1.0, 1.0);
   } else {
-    size = uSize * 2.2;
-    vColor = vec4(uAccent, 1.0);
+    // Candidate stations: white ring around the class-coloured point.
+    size = max(uSize * 4.0, 9.0);
+    vColor = vec4(1.0, 1.0, 1.0, 1.0);
+    vRing = 1.0;
   }
   gl_PointSize = size;
   vSize = size;
@@ -51,10 +56,17 @@ const POINT_FRAG = `#version 300 es
 precision mediump float;
 in vec4 vColor;
 in float vSize;
+in float vRing;
 out vec4 outColor;
 void main() {
   float alpha = vColor.a;
-  if (vSize > 3.5) {
+  if (vRing > 0.5) {
+    float d = length(gl_PointCoord - 0.5);
+    float edge = 1.0 / vSize;
+    float inner = 0.5 - 1.6 / vSize;
+    alpha *= smoothstep(inner - edge, inner, d) * (1.0 - smoothstep(0.5 - edge, 0.5, d));
+    if (alpha <= 0.0) discard;
+  } else if (vSize > 3.5) {
     float d = length(gl_PointCoord - 0.5);
     if (d > 0.5) discard;
     alpha *= 1.0 - smoothstep(0.5 - 1.0 / vSize, 0.5, d);
@@ -84,8 +96,8 @@ void main() {
   outColor = uColor;
 }`
 
-const BASE_COLOR: [number, number, number] = [0xe8 / 255, 0xe8 / 255, 0xe8 / 255]
-const ACCENT_COLOR: [number, number, number] = [1, 0xb5 / 255, 0x47 / 255]
+const DEFAULT_POINT_COLOR = 0xb0 // grey until class colours are set
+const ACCENT_COLOR: [number, number, number] = [0x52 / 255, 0xcb / 255, 0xff / 255]
 const PANEL_COLOR: RGBA = [7 / 255, 7 / 255, 7 / 255, 1]
 
 function compile(gl: WebGL2RenderingContext, type: number, source: string) {
@@ -116,6 +128,7 @@ export class AsteroidRenderer {
   private readonly pointVao: WebGLVertexArrayObject
   private readonly positionBuffer: WebGLBuffer
   private readonly stateBuffer: WebGLBuffer
+  private readonly colorBuffer: WebGLBuffer
   private readonly highlightBuffer: WebGLBuffer
   private readonly lineVao: WebGLVertexArrayObject
   private readonly lineBuffer: WebGLBuffer
@@ -133,7 +146,10 @@ export class AsteroidRenderer {
   private dpr = 1
 
   constructor(canvas: HTMLCanvasElement) {
-    const gl = canvas.getContext('webgl2', { antialias: true, alpha: false, premultipliedAlpha: false })
+    // alpha: true so the browser doesn't treat this canvas as an opaque layer that
+    // hides the page background canvas. Alpha writes are masked after the clear,
+    // so the output stays fully opaque.
+    const gl = canvas.getContext('webgl2', { antialias: true, alpha: true, premultipliedAlpha: true })
     if (!gl) throw new Error('WebGL2 is not available in this browser')
     this.gl = gl
 
@@ -142,7 +158,7 @@ export class AsteroidRenderer {
     const uniforms = (program: WebGLProgram, names: string[]) =>
       Object.fromEntries(names.map((n) => [n, gl.getUniformLocation(program, n)]))
     this.pointUniforms = uniforms(this.pointProgram, [
-      'uCenter', 'uScale', 'uViewport', 'uSize', 'uPass', 'uHover', 'uSelected', 'uBase', 'uAccent',
+      'uCenter', 'uScale', 'uViewport', 'uSize', 'uPass', 'uHover', 'uSelected', 'uAccent',
     ])
     this.lineUniforms = uniforms(this.lineProgram, [
       'uCenter', 'uScale', 'uViewport', 'uPointSize', 'uColor', 'uRound',
@@ -150,6 +166,7 @@ export class AsteroidRenderer {
 
     this.positionBuffer = gl.createBuffer()!
     this.stateBuffer = gl.createBuffer()!
+    this.colorBuffer = gl.createBuffer()!
     this.highlightBuffer = gl.createBuffer()!
     this.pointVao = gl.createVertexArray()!
     gl.bindVertexArray(this.pointVao)
@@ -161,6 +178,10 @@ export class AsteroidRenderer {
     gl.bindBuffer(gl.ARRAY_BUFFER, this.stateBuffer)
     gl.enableVertexAttribArray(stateLoc)
     gl.vertexAttribPointer(stateLoc, 1, gl.UNSIGNED_BYTE, false, 0, 0)
+    const colorLoc = gl.getAttribLocation(this.pointProgram, 'aColor')
+    gl.bindBuffer(gl.ARRAY_BUFFER, this.colorBuffer)
+    gl.enableVertexAttribArray(colorLoc)
+    gl.vertexAttribPointer(colorLoc, 3, gl.UNSIGNED_BYTE, true, 0, 0)
     gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER, this.highlightBuffer)
     gl.bindVertexArray(null)
 
@@ -177,6 +198,14 @@ export class AsteroidRenderer {
     gl.bindBuffer(gl.ARRAY_BUFFER, this.positionBuffer)
     gl.bufferData(gl.ARRAY_BUFFER, positions, gl.STATIC_DRAW)
     this.setMask(new Uint8Array(this.count).fill(1))
+    this.setColors(new Uint8Array(this.count * 3).fill(DEFAULT_POINT_COLOR))
+  }
+
+  /** Per-asteroid RGB bytes, interleaved (length = count * 3). */
+  setColors(colors: Uint8Array) {
+    const gl = this.gl
+    gl.bindBuffer(gl.ARRAY_BUFFER, this.colorBuffer)
+    gl.bufferData(gl.ARRAY_BUFFER, colors, gl.STATIC_DRAW)
   }
 
   setMask(mask: Uint8Array) {
@@ -228,8 +257,10 @@ export class AsteroidRenderer {
     const vh = gl.canvas.height
     const scale = view.scale * this.dpr
     gl.viewport(0, 0, vw, vh)
+    gl.colorMask(true, true, true, true)
     gl.clearColor(...PANEL_COLOR)
     gl.clear(gl.COLOR_BUFFER_BIT)
+    gl.colorMask(true, true, true, false)
     gl.enable(gl.BLEND)
 
     gl.useProgram(this.lineProgram)
@@ -256,13 +287,14 @@ export class AsteroidRenderer {
       gl.uniform1f(pu.uScale, scale)
       gl.uniform2f(pu.uViewport, vw, vh)
       gl.uniform1f(pu.uSize, pointSizeCss * this.dpr)
-      gl.uniform3f(pu.uBase, ...BASE_COLOR)
       gl.uniform3f(pu.uAccent, ...ACCENT_COLOR)
       gl.uniform1i(pu.uHover, this.hover)
       gl.uniform1i(pu.uSelected, this.selected)
       gl.bindVertexArray(this.pointVao)
 
-      gl.blendFunc(gl.SRC_ALPHA, gl.ONE)
+      // Normal blending keeps class colours true where points overlap
+      // (additive blending would wash dense regions out to white).
+      gl.blendFunc(gl.SRC_ALPHA, gl.ONE_MINUS_SRC_ALPHA)
       gl.uniform1i(pu.uPass, 0)
       gl.drawArrays(gl.POINTS, 0, this.count)
 
@@ -289,6 +321,7 @@ export class AsteroidRenderer {
     const gl = this.gl
     gl.deleteBuffer(this.positionBuffer)
     gl.deleteBuffer(this.stateBuffer)
+    gl.deleteBuffer(this.colorBuffer)
     gl.deleteBuffer(this.highlightBuffer)
     gl.deleteBuffer(this.lineBuffer)
     gl.deleteBuffer(this.sunBuffer)

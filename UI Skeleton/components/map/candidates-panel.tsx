@@ -31,7 +31,7 @@ export function CandidatesPanel({ dataset, candidates, selected, onSelect, onHov
         <p className="px-5 pb-5 text-sm text-muted-foreground">No data loaded.</p>
       ) : candidates.length === 0 ? (
         <p className="px-5 pb-5 text-sm text-muted-foreground">
-          No asteroid matches the filters within the Δv budget and duration.
+          No asteroid matches the filters and the composition the product needs.
         </p>
       ) : (
         <ol className="flex min-h-0 flex-col gap-1 overflow-y-auto px-2 pb-2">
@@ -63,7 +63,7 @@ export function CandidatesPanel({ dataset, candidates, selected, onSelect, onHov
                   </span>
                   <dl className="grid grid-cols-3 gap-x-3 gap-y-1 font-mono text-[11px] tabular-nums">
                     {c.drivers.map((d) => (
-                      <div key={d.label} className="flex min-w-0 gap-1">
+                      <div key={d.label} className={cn('flex min-w-0 gap-1', d.label === 'Region' && 'col-span-3', d.value.includes('(') && 'col-span-2')}>
                         <dt className="text-muted-foreground">{d.label}</dt>
                         <dd className="truncate text-white/85">{d.value}</dd>
                       </div>

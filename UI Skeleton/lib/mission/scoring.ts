@@ -1,43 +1,48 @@
 /**
- * PLACEHOLDER MODULE — scoring function.
+ * PLACEHOLDER MODULE — station scoring.
  *
- * Replace this file with the real scoring and routing model. The ranking code
- * only depends on `scoreAsteroid` and `explainScore` keeping these signatures.
+ * Stations are judged on where they are placed and what it would cost to
+ * manufacture there once they are in place. Launch and transfer costs are out
+ * of scope. Replace this file with the real manufacturing cost model; the
+ * ranking code only depends on `scoreAsteroid` and `explainScore` keeping
+ * these signatures.
  *
- * Current behaviour:
- * - Transfer cost is a heliocentric Hohmann estimate between circular orbits
- *   at the start body's semi-major axis and the asteroid's, with the plane
- *   change combined into the arrival burn. Eccentricity, phasing, launch
- *   windows and escape/capture are ignored.
- * - An asteroid is feasible when its class matches the target resource and the
- *   estimate fits the Δv budget and mission duration.
- * - Score is the fraction of the Δv budget left over. No resource-yield or
- *   cost figures are used.
+ * Current behaviour (no cost or yield figures are used):
+ * - An asteroid is a candidate when its composition category suits the product
+ *   (see resources.ts) and it passed the map filters (including region).
+ * - The score mixes two proxies for manufacturing cost, each scaled to [0, 1]:
+ *   - Feedstock: log10 of the diameter, as a stand-in for how much material
+ *     the body offers.
+ *   - Solar power: sunlight available at the orbit, which falls off as 1/a²
+ *     (a in au, so 1.0 = sunlight at Earth's distance).
+ *   `feedstockWeight` sets the balance; solar power gets the remainder.
  */
 
 import type { AsteroidRecord } from '@/lib/asteroids/types'
-import { taxonomyMatchesResource, type ResourceId } from './resources'
-import type { StartBodyId } from './bodies'
+import { REGIONS } from '@/lib/asteroids/regions'
+import { candidateCategories, categoryLabel, type CategoryId } from '@/lib/asteroids/class-colors'
+import { categoryMatchesResource, type ResourceId } from './resources'
 
-export interface MissionParams {
-  startBody: StartBodyId
-  /** Semi-major axis of a custom starting orbit, au. */
-  customA: number
-  deltaVBudget: number
-  durationDays: number
-  resource: ResourceId
+export interface StationParams {
+  /** What the station manufactures. */
+  product: ResourceId
+  /** 0 = rank only on solar power, 1 = rank only on feedstock size. */
+  feedstockWeight: number
   topN: number
 }
 
 export interface ScoreContext {
-  startA: number
-  mission: MissionParams
+  station: StationParams
+  /** log10(km) range used to scale feedstock. */
+  diameterLog: [number, number]
+  /** Highest relative solar flux (1/a²) in the dataset, used to scale power. */
+  maxFlux: number
 }
 
 export interface AsteroidScoreInput {
   a: number
-  inclinationDeg: number
-  taxonomyClass: string | null
+  diameterKm: number | null
+  category: CategoryId
 }
 
 export interface ScoreDriver {
@@ -45,47 +50,35 @@ export interface ScoreDriver {
   value: string
 }
 
-const MU_SUN_KM3_S2 = 1.32712440018e11
-const AU_KM = 1.495978707e8
-const SECONDS_PER_DAY = 86400
+/** Sunlight at the orbit relative to 1 au. */
+export const relativeSolarFlux = (a: number) => 1 / (a * a)
 
-export function estimateTransfer(startA: number, targetA: number, inclinationDeg: number) {
-  const r1 = startA * AU_KM
-  const r2 = targetA * AU_KM
-  const transferA = (r1 + r2) / 2
-  const v1 = Math.sqrt(MU_SUN_KM3_S2 / r1)
-  const v2 = Math.sqrt(MU_SUN_KM3_S2 / r2)
-  const vt1 = Math.sqrt(MU_SUN_KM3_S2 * (2 / r1 - 1 / transferA))
-  const vt2 = Math.sqrt(MU_SUN_KM3_S2 * (2 / r2 - 1 / transferA))
-  const inc = (inclinationDeg * Math.PI) / 180
-  const departure = Math.abs(vt1 - v1)
-  const arrival = Math.sqrt(vt2 * vt2 + v2 * v2 - 2 * vt2 * v2 * Math.cos(inc))
-  const timeOfFlightDays =
-    (Math.PI * Math.sqrt((transferA * transferA * transferA) / MU_SUN_KM3_S2)) / SECONDS_PER_DAY
-  return { deltaV: departure + arrival, timeOfFlightDays }
-}
+const clamp01 = (v: number) => Math.min(1, Math.max(0, v))
 
 /** Returns a score in [0, 1], or null when the asteroid is not a candidate. */
 export function scoreAsteroid(input: AsteroidScoreInput, ctx: ScoreContext): number | null {
-  if (!taxonomyMatchesResource(input.taxonomyClass, ctx.mission.resource)) return null
-  const { deltaV, timeOfFlightDays } = estimateTransfer(ctx.startA, input.a, input.inclinationDeg)
-  if (deltaV > ctx.mission.deltaVBudget) return null
-  if (timeOfFlightDays > ctx.mission.durationDays) return null
-  return 1 - deltaV / ctx.mission.deltaVBudget
+  if (!categoryMatchesResource(input.category, ctx.station.product)) return null
+  const [lo, hi] = ctx.diameterLog
+  const feedstock =
+    input.diameterKm !== null && input.diameterKm > 0
+      ? clamp01((Math.log10(input.diameterKm) - lo) / Math.max(hi - lo, 1e-6))
+      : 0
+  const power = clamp01(relativeSolarFlux(input.a) / ctx.maxFlux)
+  const w = clamp01(ctx.station.feedstockWeight)
+  return w * feedstock + (1 - w) * power
 }
 
 /** The stats shown next to a candidate in the results panel. */
-export function explainScore(record: AsteroidRecord, ctx: ScoreContext): ScoreDriver[] {
-  const { deltaV, timeOfFlightDays } = estimateTransfer(ctx.startA, record.a, record.i)
+export function explainScore(record: AsteroidRecord, regionIndex: number, category: CategoryId): ScoreDriver[] {
+  // Mixed classes (e.g. X) show which category this asteroid was placed in.
+  const mixed = candidateCategories(record.taxonomy_class).length > 1
+  const cls = record.taxonomy_class ?? '—'
   return [
-    { label: 'Δv', value: `${deltaV.toFixed(2)} km/s` },
-    { label: 'Transfer', value: `${Math.round(timeOfFlightDays)} d` },
-    { label: 'Class', value: record.taxonomy_class ?? '—' },
+    { label: 'Class', value: mixed ? `${cls} (${categoryLabel(category)})` : cls },
+    { label: 'D', value: record.diameter_km !== null ? `${record.diameter_km.toFixed(1)} km` : '—' },
+    { label: 'Sun', value: `${relativeSolarFlux(record.a).toFixed(2)}×` },
     { label: 'a', value: `${record.a.toFixed(3)} au` },
     { label: 'i', value: `${record.i.toFixed(1)}°` },
-    {
-      label: 'D',
-      value: record.diameter_km !== null ? `${record.diameter_km.toFixed(1)} km` : '—',
-    },
+    { label: 'Region', value: REGIONS[regionIndex] ?? '—' },
   ]
 }
