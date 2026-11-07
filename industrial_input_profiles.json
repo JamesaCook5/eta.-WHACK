@@ -1,0 +1,56 @@
+{
+  "description": "Editable reference input families for resource-suitability scoring, not quantified engineering BOMs. Parts receive equal weight by default; constituents share their part's weight. Unknown or omitted formulations are listed explicitly.",
+  "reference_basis": "Each element's best mean indexed content in kg per tonne of ore; fixed across products and Monte Carlo draws. This is a relative composition benchmark, not a product's mass demand or a measured extraction yield.",
+  "profiles": {
+    "batteries": {
+      "title": "Batteries",
+      "scope": "LFP cell materials and aluminium pack enclosure",
+      "parts": [
+        {"name": "LFP cathode and conductive carbon", "inputs": ["Li", "Fe", "P", "O", "C"], "material_ids": ["mfg_LFP_powder"]},
+        {"name": "Graphite anode", "inputs": ["C"], "material_ids": ["mfg_graphite"]},
+        {"name": "Aluminium current collector", "inputs": ["Al"], "material_ids": ["mfg_Al_foil"]},
+        {"name": "Copper current collector", "inputs": ["Cu"], "material_ids": ["mfg_Cu_foil"]},
+        {"name": "LiPF6 and carbonate electrolyte", "inputs": ["Li", "P", "F", "C", "H", "O"], "material_ids": ["mfg_electrolyte"]},
+        {"name": "Polymer separator and binder families", "inputs": ["C", "H", "O", "F"], "material_ids": ["mfg_battery_separator", "ext_PVDF_cathode_binder", "ext_CMC_SBR_anode_binder"]},
+        {"name": "Al-Mg-Si pack alloy", "inputs": ["Al", "Mg", "Si"], "material_ids": ["mfg_Al_stock"]}
+      ],
+      "unmodelled_requirements": ["Complete pack electronics BOM", "Formulation-specific additives", "Qualified binders and electrolyte manufacture", "Equipment, utilities and process consumables"]
+    },
+    "semiconductors": {
+      "title": "Semiconductors",
+      "scope": "Controller die, dopants, dielectrics and package materials",
+      "parts": [
+        {"name": "Silicon die", "inputs": ["Si"], "material_ids": ["mfg_polysilicon_feed"]},
+        {"name": "Boron and phosphorus dopants", "inputs": ["B", "P"], "material_ids": ["ext_B_dopant", "ext_P_dopant"]},
+        {"name": "Silicon oxide dielectrics", "inputs": ["Si", "O"], "material_ids": ["mfg_gate_oxide", "mfg_ILD"]},
+        {"name": "Silicon/nitrogen passivation feed elements", "inputs": ["Si", "N"], "material_ids": ["mfg_passivation"]},
+        {"name": "Aluminium bond wires", "inputs": ["Al"], "material_ids": ["mfg_Al_wire"]},
+        {"name": "Alumina ceramic package", "inputs": ["Al", "O"], "material_ids": ["mfg_alumina_ceramic"]}
+      ],
+      "unmodelled_requirements": ["Selected device stack, PDK and complete fabrication recipe", "Joining and adhesive formulations", "Purity, grade, process gases, equipment and utilities"]
+    },
+    "aluminium": {
+      "title": "Bulk aluminium",
+      "scope": "Al-Mg-Si alloy stock selected in the manufacturing DAG",
+      "parts": [{"name": "Al-Mg-Si stock", "inputs": ["Al", "Mg", "Si"], "material_ids": ["mfg_Al_stock"]}],
+      "unmodelled_requirements": ["Alloy mass fractions, refining losses, purity, equipment and utilities"]
+    },
+    "steel": {
+      "title": "Bulk steel",
+      "scope": "Fe/C/Mn constituents of the reference steel recipe",
+      "parts": [{"name": "Fe-C-Mn steel", "inputs": ["Fe", "C", "Mn"], "material_ids": ["mfg_steel_melt", "ext_Mn"]}],
+      "unmodelled_requirements": ["Selected steel grade and alloy mass fractions", "Flux, deoxidizer, refractory, equipment and utilities"]
+    },
+    "titanium": {
+      "title": "Bulk titanium",
+      "scope": "Titanium content for mill stock",
+      "parts": [{"name": "Titanium stock", "inputs": ["Ti"], "material_ids": ["mfg_Ti_stock"]}],
+      "unmodelled_requirements": ["Refining route, reagents, losses, grade, equipment and utilities"]
+    },
+    "bulk_metals": {
+      "title": "Bulk metals",
+      "scope": "Equal-weight aluminium, steel and titanium scores",
+      "profiles": {"aluminium": 1.0, "steel": 1.0, "titanium": 1.0}
+    }
+  }
+}

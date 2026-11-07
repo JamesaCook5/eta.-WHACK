@@ -12,7 +12,8 @@
     "Mineral abundances are approximate; meteorite studies report vol%, converted roughly to wt%.",
     "PGMs and gold do not form their own ore body; they are dissolved in Fe-Ni metal (or sulfides) and recovered as a by-product.",
     "Types with confidence L/VL are team estimates based on tentative meteorite analogues.",
-    "X (and the X part of any blend) must first be resolved by albedo: <0.075 -> P, 0.075-0.30 -> M (Xk if class Xk), >0.30 -> E."
+    "X (and the X part of any blend) must first be resolved by albedo: <0.075 -> P, 0.075-0.30 -> M (Xk if class Xk), >0.30 -> E.",
+    "resource_presence contains qualitative, user-requested class planning assumptions. They may represent ice detections or interpretations on some class members, not measurements on every body. Null bulk_wt_pct means unknown; these flags do not add a second mass inventory or renormalise minerals_wt_pct. Hydrated minerals and free water ice remain distinct sources."
   ],
   "mineral_catalogue": {
     "hydrated_phyllosilicates": {
@@ -311,7 +312,20 @@
         "Au": 0.15,
         "host": "sulfides and magnetite (finely dispersed)"
       },
-      "mineralogy_source": "King et al. 2015 (CI); King et al. 2017 & Howard et al. 2011 (CM); Bennu/Ryugu sample analyses"
+      "mineralogy_source": "King et al. 2015 (CI); King et al. 2017 & Howard et al. 2011 (CM); Bennu/Ryugu sample analyses",
+      "resource_presence": {
+        "water_ice": {
+          "assumed_present": true,
+          "bulk_wt_pct": null,
+          "form": "free_or_near_surface_water_ice",
+          "basis": "user_requested_class_level_planning_assumption",
+          "evidence_scope": "Water-ice spectral interpretations on some C/B-complex or P-type members; not a universal class detection or a measured bulk abundance.",
+          "sources": [
+            "https://agupubs.onlinelibrary.wiley.com/doi/full/10.1029/2018JE005584",
+            "https://doi.org/10.1051/0004-6361/201015339"
+          ]
+        }
+      }
     },
     "Cb": {
       "analogue": "CI-like (Ryugu analogue)",
@@ -401,7 +415,19 @@
         "Au": 0.15,
         "host": "sulfides and magnetite (finely dispersed)"
       },
-      "mineralogy_source": "King et al. 2017; Howard et al. 2011 (CM)"
+      "mineralogy_source": "King et al. 2017; Howard et al. 2011 (CM)",
+      "resource_presence": {
+        "hydrated_phyllosilicates": {
+          "assumed_present": true,
+          "bulk_wt_pct": null,
+          "form": "structurally_bound_water_or_hydroxyl",
+          "basis": "hydrated_taxonomic_class",
+          "evidence_scope": "The hydrated spectral subclasses establish hydrous minerals, not exposed free ice. Existing mineral fractions take precedence.",
+          "sources": [
+            "https://agupubs.onlinelibrary.wiley.com/doi/full/10.1029/2018JE005584"
+          ]
+        }
+      }
     },
     "Cgh": {
       "analogue": "CM2 (use Ch; Carry Cgh n=1)",
@@ -432,7 +458,19 @@
         "Au": 0.15,
         "host": "sulfides and magnetite (finely dispersed)"
       },
-      "mineralogy_source": "as Ch"
+      "mineralogy_source": "as Ch",
+      "resource_presence": {
+        "hydrated_phyllosilicates": {
+          "assumed_present": true,
+          "bulk_wt_pct": null,
+          "form": "structurally_bound_water_or_hydroxyl",
+          "basis": "hydrated_taxonomic_class",
+          "evidence_scope": "The hydrated spectral subclasses establish hydrous minerals, not exposed free ice. Existing mineral fractions take precedence.",
+          "sources": [
+            "https://agupubs.onlinelibrary.wiley.com/doi/full/10.1029/2018JE005584"
+          ]
+        }
+      }
     },
     "B": {
       "analogue": "CI-like (Bennu) / CV-CO for large B",
@@ -462,7 +500,19 @@
         "Au": 0.15,
         "host": "sulfides and magnetite (finely dispersed)"
       },
-      "mineralogy_source": "Bennu sample analyses (Lauretta et al. 2024)"
+      "mineralogy_source": "Bennu sample analyses (Lauretta et al. 2024)",
+      "resource_presence": {
+        "water_ice": {
+          "assumed_present": true,
+          "bulk_wt_pct": null,
+          "form": "free_or_near_surface_water_ice",
+          "basis": "user_requested_class_level_planning_assumption",
+          "evidence_scope": "Water-ice spectral interpretations on some C/B-complex or P-type members; not a universal class detection or a measured bulk abundance.",
+          "sources": [
+            "https://agupubs.onlinelibrary.wiley.com/doi/full/10.1029/2018JE005584"
+          ]
+        }
+      }
     },
     "D": {
       "analogue": "primitive organic/ice-rich (Tagish-Lake-like)",
@@ -523,7 +573,20 @@
         "Au": 0.15,
         "host": "fe_ni_metal and sulfides"
       },
-      "mineralogy_source": "team estimate (CI/CM-like)"
+      "mineralogy_source": "team estimate (CI/CM-like)",
+      "resource_presence": {
+        "water_ice": {
+          "assumed_present": true,
+          "bulk_wt_pct": null,
+          "form": "free_or_near_surface_water_ice",
+          "basis": "user_requested_class_level_planning_assumption",
+          "evidence_scope": "Water-ice spectral interpretations on some C/B-complex or P-type members; not a universal class detection or a measured bulk abundance.",
+          "sources": [
+            "https://agupubs.onlinelibrary.wiley.com/doi/full/10.1029/2018JE005584",
+            "https://doi.org/10.1051/0004-6361/201015339"
+          ]
+        }
+      }
     },
     "T": {
       "analogue": "troilite-bearing / D-X intermediate",
