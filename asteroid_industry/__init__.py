@@ -1,0 +1,55 @@
+"""Asteroid resource -> industrial process graph modelling.
+
+Public API
+----------
+CompositionModel       Surface type -> mineral mass-fraction ranges / samples.
+Asteroid               A catalogue object with diameter, density and mass.
+AsteroidCatalog        Adapter for the project's parquet dataset.
+Process, ProcessGraph  Unit-operation DAG with material and equipment flows.
+IndustrialModel        Forward material-flow simulation and backward demand.
+IndustrialSystem       High-level: asteroid -> feedstock inventory -> products.
+"""
+
+from .composition import (
+    DEFAULT_DENSITY,
+    DEFAULT_FEEDSTOCK_MAP,
+    SURFACE_COMPOSITION_RANGES,
+    CompositionModel,
+    normalize_surface_type,
+)
+from .asteroid import Asteroid, AsteroidCatalog, ResourceEstimate, estimate_resources
+from .processes import Process, ProcessGraph
+from .model import IndustrialModel, ProductionPotential, ProductionResult, RequiredInputs
+from .system import AsteroidAssessment, IndustrialSystem
+from .spatial import (
+    SpatialBin,
+    SpatialMap,
+    build_spatial_map,
+    build_spatial_maps,
+    plot_spatial_map,
+)
+
+__all__ = [
+    "CompositionModel",
+    "normalize_surface_type",
+    "SURFACE_COMPOSITION_RANGES",
+    "DEFAULT_FEEDSTOCK_MAP",
+    "DEFAULT_DENSITY",
+    "Asteroid",
+    "AsteroidCatalog",
+    "ResourceEstimate",
+    "estimate_resources",
+    "Process",
+    "ProcessGraph",
+    "IndustrialModel",
+    "ProductionResult",
+    "ProductionPotential",
+    "RequiredInputs",
+    "IndustrialSystem",
+    "AsteroidAssessment",
+    "SpatialBin",
+    "SpatialMap",
+    "build_spatial_map",
+    "build_spatial_maps",
+    "plot_spatial_map",
+]

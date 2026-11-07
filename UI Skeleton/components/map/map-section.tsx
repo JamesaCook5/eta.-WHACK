@@ -11,6 +11,8 @@ import { MapCanvas } from './map-canvas'
 import { ControlsPanel } from './controls-panel'
 import { CandidatesPanel } from './candidates-panel'
 import { SelectedPanel } from './selected-panel'
+import { SupplyPanel } from './supply-panel'
+import { estimateFeedstock, MATERIAL_SUPPLY_URL, loadMaterialSupply, type MaterialSupplyModel } from '@/lib/mission/material-supply'
 
 const DEFAULT_MISSION: MissionParams = {
   startBody: 'earth',
@@ -27,10 +29,16 @@ export function MapSection() {
     revalidateIfStale: false,
     shouldRetryOnError: false,
   })
+  const { data: supplyModel } = useSWR<MaterialSupplyModel>(MATERIAL_SUPPLY_URL, loadMaterialSupply, {
+    revalidateOnFocus: false,
+    shouldRetryOnError: false,
+  })
   const [filterState, setFilterState] = useState<AsteroidFilters | null>(null)
   const [mission, setMission] = useState<MissionParams>(DEFAULT_MISSION)
   const [hovered, setHovered] = useState(-1)
   const [selected, setSelected] = useState(-1)
+  const [supplyMode, setSupplyMode] = useState(false)
+  const [mineralId, setMineralId] = useState('hydrated_phyllosilicates')
 
   const filters = filterState ?? defaultFilters(dataset ?? null)
   const deferredFilters = useDeferredValue(filters)
@@ -45,6 +53,17 @@ export function MapSection() {
     [dataset, mask, deferredMission],
   )
   const candidateIndices = useMemo(() => ranked.map((c) => c.index), [ranked])
+  const supplyRows = useMemo(
+    () => dataset && supplyModel ? estimateFeedstock(dataset, supplyModel, mineralId, mask) : [],
+    [dataset, supplyModel, mineralId, mask],
+  )
+  const mapMask = useMemo(() => {
+    if (!supplyMode || !dataset) return mask
+    const visible = new Uint8Array(dataset.count)
+    for (const row of supplyRows) visible[row.index] = 1
+    return visible
+  }, [dataset, mask, supplyMode, supplyRows])
+  const mapHighlights = supplyMode ? supplyRows.map((row) => row.index) : candidateIndices
   const visibleCount = useMemo(() => (mask ? mask.reduce((n, v) => n + v, 0) : 0), [mask])
 
   const emptyMessage = isLoading
@@ -75,9 +94,16 @@ export function MapSection() {
           </h2>
           <p className="font-mono text-xs text-muted-foreground tabular-nums" aria-live="polite">
             {dataset
-              ? `${visibleCount.toLocaleString()} of ${dataset.count.toLocaleString()} match filters`
+              ? supplyMode
+                ? `${supplyRows.length.toLocaleString()} mapped ${supplyModel?.minerals[mineralId]?.label.toLowerCase() ?? 'feedstock'} bodies`
+                : `${visibleCount.toLocaleString()} of ${dataset.count.toLocaleString()} match filters`
               : 'No data'}
           </p>
+        </div>
+
+        <div className="mt-5 inline-flex rounded-md border border-white/10 bg-black/20 p-1" role="group" aria-label="Map layer">
+          <button type="button" aria-pressed={!supplyMode} onClick={() => setSupplyMode(false)} className={`rounded px-3 py-1.5 text-xs transition-colors ${!supplyMode ? 'bg-white text-black' : 'text-white/70 hover:text-white'}`}>Mission candidates</button>
+          <button type="button" aria-pressed={supplyMode} onClick={() => setSupplyMode(true)} className={`rounded px-3 py-1.5 text-xs transition-colors ${supplyMode ? 'bg-signal text-black' : 'text-white/70 hover:text-white'}`}>Material supply</button>
         </div>
 
         <div className="mt-8 grid gap-4 lg:grid-cols-[17rem_minmax(0,1fr)_20rem]">
@@ -99,8 +125,8 @@ export function MapSection() {
             <div className="h-[62svh] min-h-80 lg:h-[46rem]">
               <MapCanvas
                 dataset={dataset ?? null}
-                mask={mask}
-                candidates={candidateIndices}
+                mask={mapMask}
+                candidates={mapHighlights}
                 hovered={hovered}
                 selected={selected}
                 onHover={setHovered}
@@ -117,13 +143,17 @@ export function MapSection() {
               record={dataset && selected >= 0 ? dataset.records[selected] : null}
               onClear={() => setSelected(-1)}
             />
-            <CandidatesPanel
-              dataset={dataset ?? null}
-              candidates={ranked}
-              selected={selected}
-              onSelect={setSelected}
-              onHover={setHovered}
-            />
+            {supplyMode ? (
+              <SupplyPanel dataset={dataset ?? null} model={supplyModel ?? null} mineralId={mineralId} onMineralChange={setMineralId} mask={mask} />
+            ) : (
+              <CandidatesPanel
+                dataset={dataset ?? null}
+                candidates={ranked}
+                selected={selected}
+                onSelect={setSelected}
+                onHover={setHovered}
+              />
+            )}
           </div>
         </div>
       </div>
