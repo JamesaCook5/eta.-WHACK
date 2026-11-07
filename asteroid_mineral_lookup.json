@@ -1,0 +1,1236 @@
+{
+  "description": "Asteroid taxonomy (taxonomy.class) -> mineral/ore composition. minerals_wt_pct sums to 100 per type. To get products: asteroid_mass x mineral wt% x typical_yield_wt_pct.",
+  "units": {
+    "minerals_wt_pct": "wt% of bulk asteroid mass",
+    "physical.rho_*": "g/cm^3",
+    "physical.macroporosity_pct": "%",
+    "physical.albedo_*": "geometric albedo",
+    "trace_elements_ppm": "ppm of bulk mass (g/tonne)",
+    "typical_yield_wt_pct": "wt% of that mineral (approximate stoichiometry)"
+  },
+  "notes": [
+    "Mineral abundances are approximate; meteorite studies report vol%, converted roughly to wt%.",
+    "PGMs and gold do not form their own ore body; they are dissolved in Fe-Ni metal (or sulfides) and recovered as a by-product.",
+    "Types with confidence L/VL are team estimates based on tentative meteorite analogues.",
+    "X (and the X part of any blend) must first be resolved by albedo: <0.075 -> P, 0.075-0.30 -> M (Xk if class Xk), >0.30 -> E."
+  ],
+  "mineral_catalogue": {
+    "hydrated_phyllosilicates": {
+      "name": "Hydrated clays (serpentine/saponite)",
+      "formula": "(Mg,Fe)3Si2O5(OH)4",
+      "ore_of": [
+        "water",
+        "Mg",
+        "Si",
+        "Fe"
+      ],
+      "typical_yield_wt_pct": {
+        "water": 12,
+        "Mg": 15,
+        "Si": 18,
+        "Fe": 12
+      },
+      "extraction": "Heat to ~300–800 °C to drive off water; residue usable as silicate feedstock"
+    },
+    "water_ice": {
+      "name": "Water ice",
+      "formula": "H2O",
+      "ore_of": [
+        "water"
+      ],
+      "typical_yield_wt_pct": {
+        "water": 100
+      },
+      "extraction": "Gentle heating/sublimation and condensation"
+    },
+    "magnetite": {
+      "name": "Magnetite (iron oxide)",
+      "formula": "Fe3O4",
+      "ore_of": [
+        "Fe",
+        "O"
+      ],
+      "typical_yield_wt_pct": {
+        "Fe": 72.4,
+        "O": 27.6
+      },
+      "extraction": "Magnetic separation, then reduction (e.g. hydrogen or carbon) to iron"
+    },
+    "fe_ni_metal": {
+      "name": "Native iron-nickel metal (kamacite/taenite)",
+      "formula": "Fe-Ni(-Co) alloy",
+      "ore_of": [
+        "Fe",
+        "Ni",
+        "Co",
+        "PGM"
+      ],
+      "typical_yield_wt_pct": {
+        "Fe": 90,
+        "Ni": 9,
+        "Co": 0.5
+      },
+      "extraction": "Magnetic separation; carbonyl (Mond) process separates Fe, Ni, Co and leaves PGM residue. PGMs are dissolved in this phase (see trace_elements)"
+    },
+    "sulfides": {
+      "name": "Iron/nickel sulfides (troilite, pyrrhotite, pentlandite)",
+      "formula": "FeS, Fe1-xS, (Fe,Ni)9S8",
+      "ore_of": [
+        "S",
+        "Fe",
+        "Ni"
+      ],
+      "typical_yield_wt_pct": {
+        "Fe": 61,
+        "S": 36,
+        "Ni": 3
+      },
+      "extraction": "Roasting/smelting; sulfur recovered as SO2 or elemental S"
+    },
+    "carbonates": {
+      "name": "Carbonates (dolomite, calcite)",
+      "formula": "CaMg(CO3)2, CaCO3",
+      "ore_of": [
+        "CO2",
+        "Ca",
+        "Mg"
+      ],
+      "typical_yield_wt_pct": {
+        "CO2": 47,
+        "Ca": 22,
+        "Mg": 13
+      },
+      "extraction": "Heating (calcination) releases CO2; residue is CaO/MgO"
+    },
+    "organic_matter": {
+      "name": "Insoluble organic matter (kerogen-like)",
+      "formula": "~C100H70O22N3S2",
+      "ore_of": [
+        "C",
+        "H",
+        "N"
+      ],
+      "typical_yield_wt_pct": {
+        "C": 70,
+        "H": 5,
+        "N": 2,
+        "O": 17,
+        "S": 3
+      },
+      "extraction": "Pyrolysis yields hydrocarbons, CO/CO2 and N-compounds: feedstock for fuel and plastics"
+    },
+    "olivine": {
+      "name": "Olivine",
+      "formula": "(Mg,Fe)2SiO4",
+      "ore_of": [
+        "Mg",
+        "Si",
+        "O",
+        "Fe"
+      ],
+      "typical_yield_wt_pct": {
+        "Mg": 25,
+        "Si": 18,
+        "Fe": 15,
+        "O": 42
+      },
+      "extraction": "Molten oxide electrolysis to release oxygen and metals; bulk use as construction/shielding material"
+    },
+    "low_ca_pyroxene": {
+      "name": "Low-Ca pyroxene (enstatite/orthopyroxene/pigeonite)",
+      "formula": "(Mg,Fe)SiO3",
+      "ore_of": [
+        "Mg",
+        "Si",
+        "O",
+        "Fe"
+      ],
+      "typical_yield_wt_pct": {
+        "Mg": 19,
+        "Si": 26,
+        "Fe": 9,
+        "O": 46
+      },
+      "extraction": "Molten oxide electrolysis; bulk construction/shielding"
+    },
+    "high_ca_pyroxene": {
+      "name": "High-Ca pyroxene (diopside/augite)",
+      "formula": "Ca(Mg,Fe)Si2O6",
+      "ore_of": [
+        "Ca",
+        "Mg",
+        "Si",
+        "O"
+      ],
+      "typical_yield_wt_pct": {
+        "Ca": 18,
+        "Mg": 11,
+        "Si": 26,
+        "O": 45
+      },
+      "extraction": "Molten oxide electrolysis; bulk construction/shielding"
+    },
+    "plagioclase": {
+      "name": "Plagioclase feldspar",
+      "formula": "(Ca,Na)(Al,Si)4O8",
+      "ore_of": [
+        "Al",
+        "Ca",
+        "Na",
+        "Si"
+      ],
+      "typical_yield_wt_pct": {
+        "Al": 14,
+        "Si": 27,
+        "Ca": 8,
+        "Na": 4,
+        "O": 47
+      },
+      "extraction": "Main aluminium ore in space; acid leaching or molten electrolysis"
+    },
+    "silica": {
+      "name": "Silica (tridymite/quartz)",
+      "formula": "SiO2",
+      "ore_of": [
+        "Si",
+        "O"
+      ],
+      "typical_yield_wt_pct": {
+        "Si": 46.7,
+        "O": 53.3
+      },
+      "extraction": "Glass/solar-cell silicon feedstock"
+    },
+    "chromite": {
+      "name": "Chromite",
+      "formula": "FeCr2O4",
+      "ore_of": [
+        "Cr",
+        "Fe"
+      ],
+      "typical_yield_wt_pct": {
+        "Cr": 46,
+        "Fe": 25,
+        "O": 29
+      },
+      "extraction": "Gravity/magnetic separation, then reduction; used for stainless steel"
+    },
+    "ilmenite": {
+      "name": "Ilmenite",
+      "formula": "FeTiO3",
+      "ore_of": [
+        "Ti",
+        "Fe",
+        "O"
+      ],
+      "typical_yield_wt_pct": {
+        "Ti": 31.6,
+        "Fe": 36.8,
+        "O": 31.6
+      },
+      "extraction": "Hydrogen reduction yields iron, TiO2 and water/oxygen"
+    },
+    "phosphates": {
+      "name": "Phosphates (merrillite/apatite)",
+      "formula": "Ca9NaMg(PO4)7, Ca5(PO4)3(F,Cl)",
+      "ore_of": [
+        "P",
+        "Ca"
+      ],
+      "typical_yield_wt_pct": {
+        "P": 18,
+        "Ca": 38
+      },
+      "extraction": "Acid leaching; phosphorus for fertiliser/life support"
+    },
+    "schreibersite": {
+      "name": "Schreibersite (iron-nickel phosphide)",
+      "formula": "(Fe,Ni)3P",
+      "ore_of": [
+        "P",
+        "Fe",
+        "Ni"
+      ],
+      "typical_yield_wt_pct": {
+        "Fe": 70,
+        "Ni": 15,
+        "P": 15
+      },
+      "extraction": "Recovered with the metal fraction"
+    },
+    "refractory_inclusions": {
+      "name": "Ca-Al-rich inclusions (melilite, spinel, perovskite)",
+      "formula": "Ca2Al2SiO7, MgAl2O4, CaTiO3",
+      "ore_of": [
+        "Al",
+        "Ca",
+        "Ti"
+      ],
+      "typical_yield_wt_pct": {
+        "Ca": 25,
+        "Al": 20,
+        "Ti": 2,
+        "Mg": 5
+      },
+      "extraction": "Aluminium/calcium feedstock via molten electrolysis"
+    },
+    "other": {
+      "name": "Other/minor phases (glass, amorphous, unidentified)",
+      "formula": "-",
+      "ore_of": [],
+      "typical_yield_wt_pct": {},
+      "extraction": "Treated as waste rock / regolith filler"
+    }
+  },
+  "types": {
+    "C": {
+      "analogue": "CI/CM carbonaceous chondrite",
+      "confidence": "M",
+      "physical": {
+        "rho_bulk": 1.33,
+        "rho_bulk_small_lt1km": 1.19,
+        "rho_grain": 2.25,
+        "macroporosity_pct": 41.0,
+        "albedo_typ": 0.06,
+        "albedo_min": 0.03,
+        "albedo_max": 0.1
+      },
+      "minerals_wt_pct": {
+        "hydrated_phyllosilicates": 70,
+        "magnetite": 8,
+        "sulfides": 6,
+        "carbonates": 2,
+        "organic_matter": 4,
+        "olivine": 5,
+        "low_ca_pyroxene": 2,
+        "other": 3
+      },
+      "trace_elements_ppm": {
+        "PGM_total": 3.3,
+        "Pt": 1.0,
+        "Au": 0.15,
+        "host": "sulfides and magnetite (finely dispersed)"
+      },
+      "mineralogy_source": "King et al. 2015 (CI); King et al. 2017 & Howard et al. 2011 (CM); Bennu/Ryugu sample analyses"
+    },
+    "Cb": {
+      "analogue": "CI-like (Ryugu analogue)",
+      "confidence": "M",
+      "physical": {
+        "rho_bulk": 1.25,
+        "rho_bulk_small_lt1km": 1.19,
+        "rho_grain": 2.0,
+        "macroporosity_pct": 38.0,
+        "albedo_typ": 0.06,
+        "albedo_min": 0.03,
+        "albedo_max": 0.1
+      },
+      "minerals_wt_pct": {
+        "hydrated_phyllosilicates": 74,
+        "magnetite": 9,
+        "sulfides": 6,
+        "carbonates": 3,
+        "organic_matter": 5,
+        "olivine": 1,
+        "other": 2
+      },
+      "trace_elements_ppm": {
+        "PGM_total": 3.3,
+        "Pt": 1.0,
+        "Au": 0.15,
+        "host": "sulfides and magnetite (finely dispersed)"
+      },
+      "mineralogy_source": "King et al. 2015 (CI); Ryugu sample analyses"
+    },
+    "Cg": {
+      "analogue": "CI/CM (use C; Carry Cg n=1)",
+      "confidence": "L",
+      "physical": {
+        "rho_bulk": 1.33,
+        "rho_bulk_small_lt1km": 1.19,
+        "rho_grain": 2.25,
+        "macroporosity_pct": 41.0,
+        "albedo_typ": 0.06,
+        "albedo_min": 0.03,
+        "albedo_max": 0.1
+      },
+      "minerals_wt_pct": {
+        "hydrated_phyllosilicates": 70,
+        "magnetite": 8,
+        "sulfides": 6,
+        "carbonates": 2,
+        "organic_matter": 4,
+        "olivine": 5,
+        "low_ca_pyroxene": 2,
+        "other": 3
+      },
+      "trace_elements_ppm": {
+        "PGM_total": 3.3,
+        "Pt": 1.0,
+        "Au": 0.15,
+        "host": "sulfides and magnetite (finely dispersed)"
+      },
+      "mineralogy_source": "as C"
+    },
+    "Ch": {
+      "analogue": "CM2 (hydrated; 0.7um band)",
+      "confidence": "M",
+      "physical": {
+        "rho_bulk": 1.41,
+        "rho_bulk_small_lt1km": 1.19,
+        "rho_grain": 2.25,
+        "macroporosity_pct": 37.0,
+        "albedo_typ": 0.06,
+        "albedo_min": 0.03,
+        "albedo_max": 0.09
+      },
+      "minerals_wt_pct": {
+        "hydrated_phyllosilicates": 70,
+        "olivine": 12,
+        "low_ca_pyroxene": 4,
+        "magnetite": 3,
+        "sulfides": 4,
+        "carbonates": 1.5,
+        "organic_matter": 3,
+        "fe_ni_metal": 0.5,
+        "other": 2
+      },
+      "trace_elements_ppm": {
+        "PGM_total": 3.6,
+        "Pt": 1.1,
+        "Au": 0.15,
+        "host": "sulfides and magnetite (finely dispersed)"
+      },
+      "mineralogy_source": "King et al. 2017; Howard et al. 2011 (CM)"
+    },
+    "Cgh": {
+      "analogue": "CM2 (use Ch; Carry Cgh n=1)",
+      "confidence": "L",
+      "physical": {
+        "rho_bulk": 1.41,
+        "rho_bulk_small_lt1km": 1.19,
+        "rho_grain": 2.25,
+        "macroporosity_pct": 37.0,
+        "albedo_typ": 0.06,
+        "albedo_min": 0.03,
+        "albedo_max": 0.09
+      },
+      "minerals_wt_pct": {
+        "hydrated_phyllosilicates": 70,
+        "olivine": 12,
+        "low_ca_pyroxene": 4,
+        "magnetite": 3,
+        "sulfides": 4,
+        "carbonates": 1.5,
+        "organic_matter": 3,
+        "fe_ni_metal": 0.5,
+        "other": 2
+      },
+      "trace_elements_ppm": {
+        "PGM_total": 3.6,
+        "Pt": 1.1,
+        "Au": 0.15,
+        "host": "sulfides and magnetite (finely dispersed)"
+      },
+      "mineralogy_source": "as Ch"
+    },
+    "B": {
+      "analogue": "CI-like (Bennu) / CV-CO for large B",
+      "confidence": "M",
+      "physical": {
+        "rho_bulk": 2.38,
+        "rho_bulk_small_lt1km": 1.19,
+        "rho_grain": 2.8,
+        "macroporosity_pct": 15.0,
+        "albedo_typ": 0.14,
+        "albedo_min": 0.06,
+        "albedo_max": 0.2
+      },
+      "minerals_wt_pct": {
+        "hydrated_phyllosilicates": 75,
+        "magnetite": 6,
+        "sulfides": 5,
+        "carbonates": 3,
+        "organic_matter": 6,
+        "olivine": 2,
+        "phosphates": 0.5,
+        "other": 2.5
+      },
+      "trace_elements_ppm": {
+        "PGM_total": 3.3,
+        "Pt": 1.0,
+        "Au": 0.15,
+        "host": "sulfides and magnetite (finely dispersed)"
+      },
+      "mineralogy_source": "Bennu sample analyses (Lauretta et al. 2024)"
+    },
+    "D": {
+      "analogue": "primitive organic/ice-rich (Tagish-Lake-like)",
+      "confidence": "VL",
+      "physical": {
+        "rho_bulk": 1.0,
+        "rho_bulk_small_lt1km": 1.0,
+        "rho_grain": 1.9,
+        "macroporosity_pct": 47.0,
+        "albedo_typ": 0.06,
+        "albedo_min": 0.03,
+        "albedo_max": 0.09
+      },
+      "minerals_wt_pct": {
+        "hydrated_phyllosilicates": 55,
+        "water_ice": 10,
+        "carbonates": 6,
+        "magnetite": 6,
+        "sulfides": 5,
+        "organic_matter": 6,
+        "olivine": 6,
+        "other": 6
+      },
+      "trace_elements_ppm": {
+        "PGM_total": 3.0,
+        "Pt": 0.9,
+        "Au": 0.12,
+        "host": "sulfides and magnetite (finely dispersed)"
+      },
+      "mineralogy_source": "Tagish Lake-like plus assumed 10% ice (team estimate)"
+    },
+    "P": {
+      "analogue": "low-albedo X; CI/CM/organic-rich",
+      "confidence": "L",
+      "physical": {
+        "rho_bulk": 1.85,
+        "rho_bulk_small_lt1km": 1.3,
+        "rho_grain": 2.25,
+        "macroporosity_pct": 18.0,
+        "albedo_typ": 0.05,
+        "albedo_min": 0.02,
+        "albedo_max": 0.075
+      },
+      "minerals_wt_pct": {
+        "hydrated_phyllosilicates": 60,
+        "olivine": 10,
+        "magnetite": 6,
+        "sulfides": 6,
+        "carbonates": 2,
+        "organic_matter": 5,
+        "low_ca_pyroxene": 3,
+        "fe_ni_metal": 1,
+        "other": 7
+      },
+      "trace_elements_ppm": {
+        "PGM_total": 3.3,
+        "Pt": 1.0,
+        "Au": 0.15,
+        "host": "fe_ni_metal and sulfides"
+      },
+      "mineralogy_source": "team estimate (CI/CM-like)"
+    },
+    "T": {
+      "analogue": "troilite-bearing / D-X intermediate",
+      "confidence": "VL",
+      "physical": {
+        "rho_bulk": 1.8,
+        "rho_bulk_small_lt1km": 1.3,
+        "rho_grain": 2.5,
+        "macroporosity_pct": 28.0,
+        "albedo_typ": 0.05,
+        "albedo_min": 0.03,
+        "albedo_max": 0.09
+      },
+      "minerals_wt_pct": {
+        "olivine": 25,
+        "low_ca_pyroxene": 12,
+        "hydrated_phyllosilicates": 25,
+        "sulfides": 14,
+        "fe_ni_metal": 5,
+        "magnetite": 6,
+        "organic_matter": 3,
+        "carbonates": 1,
+        "other": 9
+      },
+      "trace_elements_ppm": {
+        "PGM_total": 3.0,
+        "Pt": 0.9,
+        "Au": 0.15,
+        "host": "fe_ni_metal and sulfides"
+      },
+      "mineralogy_source": "team estimate"
+    },
+    "K": {
+      "analogue": "CV/CO (anhydrous carbonaceous)",
+      "confidence": "L",
+      "physical": {
+        "rho_bulk": 2.6,
+        "rho_bulk_small_lt1km": 2.0,
+        "rho_grain": 2.9,
+        "macroporosity_pct": 10.0,
+        "albedo_typ": 0.14,
+        "albedo_min": 0.08,
+        "albedo_max": 0.2
+      },
+      "minerals_wt_pct": {
+        "olivine": 60,
+        "low_ca_pyroxene": 8,
+        "high_ca_pyroxene": 5,
+        "refractory_inclusions": 6,
+        "plagioclase": 4,
+        "magnetite": 4,
+        "sulfides": 5,
+        "fe_ni_metal": 2,
+        "hydrated_phyllosilicates": 2,
+        "organic_matter": 0.5,
+        "other": 3.5
+      },
+      "trace_elements_ppm": {
+        "PGM_total": 4.4,
+        "Pt": 1.3,
+        "Au": 0.15,
+        "host": "fe_ni_metal and sulfides"
+      },
+      "mineralogy_source": "CV/CO chondrite (approx.)"
+    },
+    "L": {
+      "analogue": "CV-like with ~30% CAIs",
+      "confidence": "L",
+      "physical": {
+        "rho_bulk": 2.6,
+        "rho_bulk_small_lt1km": 2.0,
+        "rho_grain": 2.9,
+        "macroporosity_pct": 10.0,
+        "albedo_typ": 0.13,
+        "albedo_min": 0.08,
+        "albedo_max": 0.2
+      },
+      "minerals_wt_pct": {
+        "olivine": 45,
+        "refractory_inclusions": 25,
+        "low_ca_pyroxene": 7,
+        "high_ca_pyroxene": 6,
+        "plagioclase": 4,
+        "magnetite": 3,
+        "sulfides": 4,
+        "fe_ni_metal": 1,
+        "other": 5
+      },
+      "trace_elements_ppm": {
+        "PGM_total": 4.5,
+        "Pt": 1.3,
+        "Au": 0.15,
+        "host": "fe_ni_metal and sulfides"
+      },
+      "mineralogy_source": "CV-like with ~25% CAIs (approx.)"
+    },
+    "S": {
+      "analogue": "L/LL ordinary chondrite",
+      "confidence": "H",
+      "physical": {
+        "rho_bulk": 2.72,
+        "rho_bulk_small_lt1km": 1.9,
+        "rho_grain": 3.36,
+        "macroporosity_pct": 19.0,
+        "albedo_typ": 0.23,
+        "albedo_min": 0.12,
+        "albedo_max": 0.35
+      },
+      "minerals_wt_pct": {
+        "olivine": 45,
+        "low_ca_pyroxene": 23,
+        "high_ca_pyroxene": 5,
+        "plagioclase": 10,
+        "fe_ni_metal": 8,
+        "sulfides": 6,
+        "chromite": 0.7,
+        "phosphates": 0.6,
+        "other": 1.7
+      },
+      "trace_elements_ppm": {
+        "PGM_total": 3.5,
+        "Pt": 1.1,
+        "Au": 0.15,
+        "host": "fe_ni_metal and sulfides"
+      },
+      "mineralogy_source": "Dunn et al. 2010 (L chondrite averages, approx.)"
+    },
+    "Sq": {
+      "analogue": "LL ordinary chondrite",
+      "confidence": "M",
+      "physical": {
+        "rho_bulk": 2.78,
+        "rho_bulk_small_lt1km": 1.9,
+        "rho_grain": 3.22,
+        "macroporosity_pct": 14.0,
+        "albedo_typ": 0.25,
+        "albedo_min": 0.15,
+        "albedo_max": 0.35
+      },
+      "minerals_wt_pct": {
+        "olivine": 54,
+        "low_ca_pyroxene": 19,
+        "high_ca_pyroxene": 5,
+        "plagioclase": 10,
+        "fe_ni_metal": 3.5,
+        "sulfides": 5.5,
+        "chromite": 0.6,
+        "phosphates": 0.5,
+        "other": 1.9
+      },
+      "trace_elements_ppm": {
+        "PGM_total": 2.5,
+        "Pt": 0.8,
+        "Au": 0.12,
+        "host": "fe_ni_metal and sulfides"
+      },
+      "mineralogy_source": "Dunn et al. 2010 (LL chondrite averages, approx.)"
+    },
+    "Q": {
+      "analogue": "LL ordinary chondrite (fresh surface)",
+      "confidence": "M",
+      "physical": {
+        "rho_bulk": 2.72,
+        "rho_bulk_small_lt1km": 1.9,
+        "rho_grain": 3.22,
+        "macroporosity_pct": 16.0,
+        "albedo_typ": 0.27,
+        "albedo_min": 0.15,
+        "albedo_max": 0.45
+      },
+      "minerals_wt_pct": {
+        "olivine": 54,
+        "low_ca_pyroxene": 19,
+        "high_ca_pyroxene": 5,
+        "plagioclase": 10,
+        "fe_ni_metal": 3.5,
+        "sulfides": 5.5,
+        "chromite": 0.6,
+        "phosphates": 0.5,
+        "other": 1.9
+      },
+      "trace_elements_ppm": {
+        "PGM_total": 2.5,
+        "Pt": 0.8,
+        "Au": 0.12,
+        "host": "fe_ni_metal and sulfides"
+      },
+      "mineralogy_source": "as Sq"
+    },
+    "Sr": {
+      "analogue": "L/LL ordinary chondrite",
+      "confidence": "M",
+      "physical": {
+        "rho_bulk": 2.72,
+        "rho_bulk_small_lt1km": 1.9,
+        "rho_grain": 3.36,
+        "macroporosity_pct": 19.0,
+        "albedo_typ": 0.25,
+        "albedo_min": 0.15,
+        "albedo_max": 0.35
+      },
+      "minerals_wt_pct": {
+        "olivine": 50,
+        "low_ca_pyroxene": 21,
+        "high_ca_pyroxene": 5,
+        "plagioclase": 10,
+        "fe_ni_metal": 5.5,
+        "sulfides": 5.8,
+        "chromite": 0.6,
+        "phosphates": 0.5,
+        "other": 1.6
+      },
+      "trace_elements_ppm": {
+        "PGM_total": 3.0,
+        "Pt": 0.9,
+        "Au": 0.13,
+        "host": "fe_ni_metal and sulfides"
+      },
+      "mineralogy_source": "interpolated L/LL"
+    },
+    "V": {
+      "analogue": "HED (eucrite/howardite)",
+      "confidence": "M",
+      "physical": {
+        "rho_bulk": 2.6,
+        "rho_bulk_small_lt1km": 1.9,
+        "rho_grain": 3.25,
+        "macroporosity_pct": 20.0,
+        "albedo_typ": 0.35,
+        "albedo_min": 0.2,
+        "albedo_max": 0.55
+      },
+      "minerals_wt_pct": {
+        "low_ca_pyroxene": 50,
+        "high_ca_pyroxene": 5,
+        "plagioclase": 38,
+        "silica": 3,
+        "ilmenite": 1,
+        "chromite": 1,
+        "sulfides": 0.5,
+        "fe_ni_metal": 0.3,
+        "phosphates": 0.2,
+        "other": 1
+      },
+      "trace_elements_ppm": {
+        "PGM_total": 0.02,
+        "Pt": 0.01,
+        "Au": 0.005,
+        "host": "sulfides and magnetite (finely dispersed)"
+      },
+      "mineralogy_source": "typical eucrite/howardite mineralogy (approx.)"
+    },
+    "A": {
+      "analogue": "olivine-dominated achondrite (pallasite variant below)",
+      "confidence": "L",
+      "physical": {
+        "rho_bulk": 3.0,
+        "rho_bulk_small_lt1km": 2.2,
+        "rho_grain": 3.4,
+        "macroporosity_pct": 12.0,
+        "albedo_typ": 0.2,
+        "albedo_min": 0.12,
+        "albedo_max": 0.4
+      },
+      "minerals_wt_pct": {
+        "olivine": 85,
+        "high_ca_pyroxene": 5,
+        "low_ca_pyroxene": 2,
+        "plagioclase": 2,
+        "fe_ni_metal": 3,
+        "sulfides": 1,
+        "chromite": 1,
+        "other": 1
+      },
+      "trace_elements_ppm": {
+        "PGM_total": 0.5,
+        "Pt": 0.15,
+        "Au": 0.02,
+        "host": "fe_ni_metal and sulfides"
+      },
+      "mineralogy_source": "brachinite/olivine-rich achondrite (approx.)"
+    },
+    "E": {
+      "analogue": "aubrite (enstatite achondrite)",
+      "confidence": "M",
+      "physical": {
+        "rho_bulk": 2.8,
+        "rho_bulk_small_lt1km": 2.0,
+        "rho_grain": 3.3,
+        "macroporosity_pct": 15.0,
+        "albedo_typ": 0.45,
+        "albedo_min": 0.3,
+        "albedo_max": 0.7
+      },
+      "minerals_wt_pct": {
+        "low_ca_pyroxene": 85,
+        "plagioclase": 5,
+        "high_ca_pyroxene": 3,
+        "olivine": 3,
+        "fe_ni_metal": 1,
+        "sulfides": 2,
+        "other": 1
+      },
+      "trace_elements_ppm": {
+        "PGM_total": 0.3,
+        "Pt": 0.1,
+        "Au": 0.02,
+        "host": "fe_ni_metal and sulfides"
+      },
+      "mineralogy_source": "typical aubrite mineralogy (approx.)"
+    },
+    "Xe": {
+      "analogue": "EH/EL enstatite chondrite",
+      "confidence": "L",
+      "physical": {
+        "rho_bulk": 2.6,
+        "rho_bulk_small_lt1km": 2.0,
+        "rho_grain": 3.47,
+        "macroporosity_pct": 25.0,
+        "albedo_typ": 0.35,
+        "albedo_min": 0.2,
+        "albedo_max": 0.6
+      },
+      "minerals_wt_pct": {
+        "low_ca_pyroxene": 58,
+        "fe_ni_metal": 20,
+        "sulfides": 10,
+        "plagioclase": 7,
+        "silica": 3,
+        "schreibersite": 0.8,
+        "other": 1.2
+      },
+      "trace_elements_ppm": {
+        "PGM_total": 5.0,
+        "Pt": 1.5,
+        "Au": 0.25,
+        "host": "fe_ni_metal and sulfides"
+      },
+      "mineralogy_source": "typical EH/EL chondrite mineralogy (approx.)"
+    },
+    "M": {
+      "analogue": "stony-iron/mesosiderite-like (default)",
+      "confidence": "L",
+      "physical": {
+        "rho_bulk": 3.5,
+        "rho_bulk_small_lt1km": 2.6,
+        "rho_grain": 4.35,
+        "macroporosity_pct": 20.0,
+        "albedo_typ": 0.14,
+        "albedo_min": 0.075,
+        "albedo_max": 0.3
+      },
+      "minerals_wt_pct": {
+        "fe_ni_metal": 45,
+        "low_ca_pyroxene": 25,
+        "plagioclase": 15,
+        "olivine": 3,
+        "silica": 3,
+        "sulfides": 3,
+        "schreibersite": 1,
+        "chromite": 0.5,
+        "phosphates": 0.5,
+        "other": 4
+      },
+      "trace_elements_ppm": {
+        "PGM_total": 6.0,
+        "Pt": 2.0,
+        "Au": 0.6,
+        "host": "fe_ni_metal and sulfides"
+      },
+      "mineralogy_source": "typical mesosiderite mineralogy (approx.)"
+    },
+    "M_iron": {
+      "analogue": "iron meteorite (IIIAB-like; radar-confirmed only)",
+      "confidence": "L",
+      "physical": {
+        "rho_bulk": 5.0,
+        "rho_bulk_small_lt1km": 3.6,
+        "rho_grain": 7.3,
+        "macroporosity_pct": 32.0,
+        "albedo_typ": 0.15,
+        "albedo_min": 0.1,
+        "albedo_max": 0.3
+      },
+      "minerals_wt_pct": {
+        "fe_ni_metal": 96.5,
+        "sulfides": 2,
+        "schreibersite": 1,
+        "other": 0.5
+      },
+      "trace_elements_ppm": {
+        "PGM_total": 10.0,
+        "Pt": 3.5,
+        "Au": 1.0,
+        "host": "fe_ni_metal and sulfides"
+      },
+      "mineralogy_source": "typical iron meteorite mineralogy"
+    },
+    "Xk": {
+      "analogue": "mesosiderite/iron (Psyche-like)",
+      "confidence": "L",
+      "physical": {
+        "rho_bulk": 3.9,
+        "rho_bulk_small_lt1km": 2.8,
+        "rho_grain": 4.35,
+        "macroporosity_pct": 10.0,
+        "albedo_typ": 0.15,
+        "albedo_min": 0.1,
+        "albedo_max": 0.3
+      },
+      "minerals_wt_pct": {
+        "fe_ni_metal": 45,
+        "low_ca_pyroxene": 25,
+        "plagioclase": 15,
+        "olivine": 3,
+        "silica": 3,
+        "sulfides": 3,
+        "schreibersite": 1,
+        "chromite": 0.5,
+        "phosphates": 0.5,
+        "other": 4
+      },
+      "trace_elements_ppm": {
+        "PGM_total": 6.0,
+        "Pt": 2.0,
+        "Au": 0.6,
+        "host": "fe_ni_metal and sulfides"
+      },
+      "mineralogy_source": "as M"
+    },
+    "Xc": {
+      "analogue": "mesosiderite/stony-iron (Carry Xc mean)",
+      "confidence": "L",
+      "physical": {
+        "rho_bulk": 4.86,
+        "rho_bulk_small_lt1km": 3.0,
+        "rho_grain": 4.35,
+        "macroporosity_pct": 0.0,
+        "albedo_typ": 0.1,
+        "albedo_min": 0.05,
+        "albedo_max": 0.3
+      },
+      "minerals_wt_pct": {
+        "fe_ni_metal": 45,
+        "low_ca_pyroxene": 25,
+        "plagioclase": 15,
+        "olivine": 3,
+        "silica": 3,
+        "sulfides": 3,
+        "schreibersite": 1,
+        "chromite": 0.5,
+        "phosphates": 0.5,
+        "other": 4
+      },
+      "trace_elements_ppm": {
+        "PGM_total": 6.0,
+        "Pt": 2.0,
+        "Au": 0.6,
+        "host": "fe_ni_metal and sulfides"
+      },
+      "mineralogy_source": "as M"
+    },
+    "Xt": {
+      "analogue": "see T",
+      "confidence": "VL",
+      "physical": {
+        "rho_bulk": 1.8,
+        "rho_bulk_small_lt1km": 1.3,
+        "rho_grain": 2.5,
+        "macroporosity_pct": 28.0,
+        "albedo_typ": 0.05,
+        "albedo_min": 0.03,
+        "albedo_max": 0.09
+      },
+      "minerals_wt_pct": {
+        "olivine": 25,
+        "low_ca_pyroxene": 12,
+        "hydrated_phyllosilicates": 25,
+        "sulfides": 14,
+        "fe_ni_metal": 5,
+        "magnetite": 6,
+        "organic_matter": 3,
+        "carbonates": 1,
+        "other": 9
+      },
+      "trace_elements_ppm": {
+        "PGM_total": 3.0,
+        "Pt": 0.9,
+        "Au": 0.15,
+        "host": "fe_ni_metal and sulfides"
+      },
+      "mineralogy_source": "as T"
+    },
+    "O": {
+      "analogue": "unmatched OC-like (Boznemcova)",
+      "confidence": "VL",
+      "physical": {
+        "rho_bulk": 2.72,
+        "rho_bulk_small_lt1km": 1.9,
+        "rho_grain": 3.22,
+        "macroporosity_pct": 16.0,
+        "albedo_typ": 0.3,
+        "albedo_min": 0.2,
+        "albedo_max": 0.5
+      },
+      "minerals_wt_pct": {
+        "olivine": 54,
+        "low_ca_pyroxene": 19,
+        "high_ca_pyroxene": 5,
+        "plagioclase": 10,
+        "fe_ni_metal": 3.5,
+        "sulfides": 5.5,
+        "chromite": 0.6,
+        "phosphates": 0.5,
+        "other": 1.9
+      },
+      "trace_elements_ppm": {
+        "PGM_total": 2.5,
+        "Pt": 0.8,
+        "Au": 0.12,
+        "host": "fe_ni_metal and sulfides"
+      },
+      "mineralogy_source": "LL proxy (no confirmed analogue)"
+    },
+    "R": {
+      "analogue": "olivine-pyroxene (Dembowska)",
+      "confidence": "VL",
+      "physical": {
+        "rho_bulk": 2.72,
+        "rho_bulk_small_lt1km": 1.9,
+        "rho_grain": 3.3,
+        "macroporosity_pct": 18.0,
+        "albedo_typ": 0.35,
+        "albedo_min": 0.25,
+        "albedo_max": 0.5
+      },
+      "minerals_wt_pct": {
+        "olivine": 55,
+        "low_ca_pyroxene": 25,
+        "high_ca_pyroxene": 6,
+        "plagioclase": 6,
+        "fe_ni_metal": 3,
+        "sulfides": 3,
+        "chromite": 0.5,
+        "other": 1.5
+      },
+      "trace_elements_ppm": {
+        "PGM_total": 1.5,
+        "Pt": 0.5,
+        "Au": 0.08,
+        "host": "fe_ni_metal and sulfides"
+      },
+      "mineralogy_source": "team estimate"
+    }
+  },
+  "blends": {
+    "Cgx": {
+      "C": 0.5,
+      "P": 0.5
+    },
+    "CX": {
+      "C": 0.5,
+      "P": 0.5
+    },
+    "Bk": {
+      "B": 0.5,
+      "K": 0.5
+    },
+    "Kl": {
+      "K": 0.5,
+      "L": 0.5
+    },
+    "Ds": {
+      "D": 1.0
+    },
+    "DL": {
+      "D": 0.5,
+      "L": 0.5
+    },
+    "XD": {
+      "P": 0.5,
+      "D": 0.5
+    },
+    "LS": {
+      "L": 0.5,
+      "S": 0.5
+    },
+    "Ad": {
+      "A": 1.0
+    },
+    "Sa": {
+      "A": 0.5,
+      "S": 0.5
+    },
+    "Sv": {
+      "S": 0.5,
+      "V": 0.5
+    },
+    "SQ": {
+      "S": 0.5,
+      "Sq": 0.5
+    },
+    "Z": {
+      "D": 1.0
+    },
+    "F": {
+      "C": 1.0
+    },
+    "Ld": {
+      "L": 1.0
+    },
+    "Sl": {
+      "S": 1.0
+    },
+    "Sk": {
+      "S": 0.5,
+      "K": 0.5
+    },
+    "Vw": {
+      "V": 1.0
+    },
+    "Svw": {
+      "S": 0.5,
+      "V": 0.5
+    },
+    "Xn": {
+      "E": 1.0
+    },
+    "SV": {
+      "S": 0.6,
+      "V": 0.4
+    },
+    "SA": {
+      "S": 0.6,
+      "A": 0.4
+    },
+    "SO": {
+      "S": 0.6,
+      "O": 0.4
+    },
+    "QV": {
+      "Q": 0.6,
+      "V": 0.4
+    },
+    "QO": {
+      "Q": 0.6,
+      "O": 0.4
+    },
+    "LQ": {
+      "L": 0.6,
+      "Q": 0.4
+    },
+    "CD": {
+      "C": 0.6,
+      "D": 0.4
+    },
+    "CO": {
+      "C": 0.6,
+      "K": 0.4
+    },
+    "CL": {
+      "C": 0.6,
+      "L": 0.4
+    },
+    "CQ": {
+      "C": 0.6,
+      "Q": 0.4
+    },
+    "BU": {
+      "B": 1.0
+    },
+    "PD": {
+      "P": 0.6,
+      "D": 0.4
+    },
+    "DS": {
+      "D": 0.6,
+      "S": 0.4
+    },
+    "AQ": {
+      "A": 0.6,
+      "Q": 0.4
+    },
+    "XL": {
+      "X": 0.6,
+      "L": 0.4
+    },
+    "XS": {
+      "X": 0.6,
+      "S": 0.4
+    },
+    "XDC": {
+      "X": 0.34,
+      "D": 0.33,
+      "C": 0.33
+    },
+    "XFC": {
+      "X": 0.34,
+      "C": 0.66
+    },
+    "DSU": {
+      "D": 0.5,
+      "S": 0.5
+    },
+    "SMU": {
+      "S": 0.5,
+      "M": 0.5
+    }
+  }
+}
