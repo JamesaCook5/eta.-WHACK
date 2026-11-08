@@ -38,6 +38,8 @@ interface MapCanvasProps {
   mask: Uint8Array | null
   /** Planned stations: position, orbit ring and Monte Carlo positions. */
   stations: StationOverlay[]
+  /** Extra stations drawn as plain dots (x, y interleaved, au), for very large plans. */
+  stationDots?: Float32Array | null
   /** Per-asteroid RGB override (e.g. coloured by station); null for composition colours. */
   colors: Uint8Array | null
   /** Pulse the station markers (a new plan just arrived). */
@@ -57,6 +59,7 @@ export function MapCanvas({
   stations,
   colors,
   freshStations,
+  stationDots = null,
   onStationHover,
   onStationClick,
   hovered,
@@ -202,11 +205,12 @@ export function MapCanvas({
       ...stations
         .filter((s) => s.cloud && !s.dim)
         .map((s) => ({ points: s.cloud!, color: [...hexToRgb01(s.color), 0.35] as OrbitLine['color'], dotSize: 2.5 })),
+      ...(stationDots && stationDots.length > 0 ? [{ points: stationDots, color: [1, 1, 1, 0.9] as OrbitLine['color'], dotSize: 3.5 }] : []),
     ]
     rendererRef.current?.setOrbits(lines)
     requestDraw()
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [stations])
+  }, [stations, stationDots])
 
   // When a new plan arrives, zoom out if any station or its reach zone is off screen.
   useEffect(() => {
