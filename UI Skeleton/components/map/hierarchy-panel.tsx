@@ -4,6 +4,45 @@ import { useState } from 'react'
 import { cn } from '@/lib/utils'
 import type { HierarchyResult } from '@/lib/stations/api'
 
+const ELEMENTS: Record<string, string> = {
+  Fe: 'Iron', Ni: 'Nickel', Co: 'Cobalt', Mg: 'Magnesium', Al: 'Aluminium', Ti: 'Titanium', Cr: 'Chromium',
+  Si: 'Silicon', C: 'Carbon', water: 'Water', H: 'Hydrogen', O: 'Oxygen', N: 'Nitrogen', CO2: 'Carbon dioxide', P: 'Phosphorus',
+}
+
+export const nameOf = (id: string) => ELEMENTS[id] ?? prettyMaterial(id)
+
+/** "iron, oxygen and silicon": the largest few amounts, by name. */
+export function topNames(values?: Record<string, number>, n = 3) {
+  const names = Object.entries(values ?? {})
+    .filter(([, t]) => t > 0)
+    .sort((x, y) => y[1] - x[1])
+    .slice(0, n)
+    .map(([id]) => nameOf(id).toLowerCase())
+  return names.length > 1 ? `${names.slice(0, -1).join(', ')} and ${names[names.length - 1]}` : (names[0] ?? '')
+}
+
+/** What a station handles, largest first, as names only. */
+function Names({ title, values, max = 10 }: { title: string; values?: Record<string, number>; max?: number }) {
+  const names = Object.entries(values ?? {})
+    .filter(([, t]) => t > 0)
+    .sort((x, y) => y[1] - x[1])
+    .slice(0, max)
+    .map(([id]) => nameOf(id))
+  if (names.length === 0) return null
+  return (
+    <div className="flex flex-col gap-1.5">
+      <p className="text-xs font-medium text-white">{title}</p>
+      <ul className="flex flex-wrap gap-1">
+        {names.map((name) => (
+          <li key={name} className="rounded-md bg-white/8 px-2 py-0.5 text-xs text-white">
+            {name}
+          </li>
+        ))}
+      </ul>
+    </div>
+  )
+}
+
 /** "mfg_water_feed" → "Water feed". */
 export function prettyMaterial(id: string) {
   const s = id.replace(/^(mfg|ext)_/, '').replace(/_/g, ' ')
@@ -35,8 +74,6 @@ export function HierarchyPanel({ result, error, asteroidCounts, miningStations, 
   const s = k >= 0 ? result.stations[k] : null
   const mining = s ? miningStations.includes(k) : false
   const miningSet = new Set(miningStations)
-  const entries = (values?: Record<string, number>) =>
-    Object.entries(values ?? {}).sort((a, b) => b[1] - a[1]).slice(0, 3).map(([name, amount]) => `${prettyMaterial(name)} ${amount.toPrecision(3)} t`).join(' · ') || 'none'
   const query = stationFilter.trim().toLowerCase()
   const processingStations = result.stations.flatMap((station, index) =>
     miningSet.has(index) ? [] : [{ station, index }],
@@ -75,9 +112,6 @@ export function HierarchyPanel({ result, error, asteroidCounts, miningStations, 
               </button>
             </div>
             <p className="text-sm text-white">{mining ? 'Mining station' : prettyMaterial(s.material)}</p>
-            <p className="text-xs text-white">Process: {s.process ?? 'Raw asteroid extraction'}</p>
-            <p className="text-xs text-white">Inputs: {entries(s.inputs)}</p>
-            <p className="text-xs text-white">Outputs: {entries(s.output)}</p>
             {mining && (
               <>
                 <p className="text-2xl font-medium text-white tabular-nums">{asteroidCounts[k].toLocaleString()} asteroids</p>
@@ -85,6 +119,16 @@ export function HierarchyPanel({ result, error, asteroidCounts, miningStations, 
               </>
             )}
             <p className="text-xs text-white tabular-nums">{s.a.toFixed(2)} AU from the Sun</p>
+            <div className="mt-1 flex flex-col gap-3 border-t border-white/10 pt-3">
+              {mining ? (
+                <Names title="Ores" values={s.output} />
+              ) : (
+                <>
+                  <Names title="Takes in" values={s.inputs} />
+                  <Names title="Makes" values={s.output} />
+                </>
+              )}
+            </div>
           </div>
         ) : (
           <p className="text-sm text-white">Click a station on the map to see how many asteroids it is connected to.</p>

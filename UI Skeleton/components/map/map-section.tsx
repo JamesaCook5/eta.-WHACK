@@ -20,9 +20,7 @@ const Map3D = dynamic(() => import('./map-3d').then((m) => m.Map3D), {
 })
 import { ControlsPanel } from './controls-panel'
 import { StationsPanel } from './stations-panel'
-import { SelectedPanel } from './selected-panel'
-import { HierarchyPanel } from './hierarchy-panel'
-import { CATEGORY_IDS, categoryLabel } from '@/lib/asteroids/class-colors'
+import { HierarchyPanel, prettyMaterial, topNames } from './hierarchy-panel'
 import { PRODUCT_SUPPLY_URL, loadProductSupply, type ProductSupplyModel } from '@/lib/stations/product-supply'
 import { packMask, requestHierarchy, type HierarchyResult } from '@/lib/stations/api'
 import { DEFAULT_PLAN, MONTE_CARLO_DRAWS, type PlanSettings } from '@/lib/stations/settings'
@@ -32,7 +30,6 @@ import { hexToRgb01, stationColor, type StationOverlay } from '@/lib/stations/co
 const NO_STATIONS: StationOverlay[] = []
 /** Above this many stations, retain a small set of mining pins plus the focused/pinned station. */
 const PIN_LIMIT = 60
-const RAW_STATION_COLOR = '#777777'
 
 /**
  * Full screen for the map and both sidebars. Uses the Fullscreen API where the
@@ -193,7 +190,7 @@ export function MapSection() {
     return [...keep].sort((x, y) => x - y)
   }, [planSettings.hierarchical, hierarchyResult, miningStations, focusStation, pinnedStation])
   const hierarchyStationColors = useMemo(() => {
-    return hierarchyResult?.stations.map((s, k) => s.tier === 0 && !s.process ? RAW_STATION_COLOR : stationColor(k)) ?? []
+    return hierarchyResult?.stations.map((_, k) => stationColor(k)) ?? []
   }, [hierarchyResult])
   const feedstockColors = useMemo(
     () => hierarchyResult?.stations.map((_, k) => stationColor(k)) ?? [],
@@ -248,7 +245,6 @@ export function MapSection() {
             s.a * Math.sin(lon),
           )
         }
-        const entries = (obj?: Record<string, number>) => Object.entries(obj ?? {}).sort((a, b) => b[1] - a[1]).slice(0, 3).map(([name, amount]) => `${name} ${amount.toPrecision(3)} t`).join(' · ') || 'none'
         return {
           label: `S${k + 1}`,
           color: hierarchyStationColors[k] ?? stationColor(k),
@@ -263,12 +259,11 @@ export function MapSection() {
           pinned: pinnedStation === k,
           compact: hierarchyResult.stations.length > 24,
           info: {
-            title: `${s.material}${s.process ? ` · ${s.process}` : ''}`,
+            title: `S${k + 1}: ${mining ? 'Mining station' : prettyMaterial(s.material)}`,
             lines: [
-              `Process: ${s.process ?? 'Raw asteroid extraction'}`,
-              `Inputs: ${entries(s.inputs)}`,
-              `Outputs: ${entries(s.output)}`,
-              mining ? `${asteroidCounts[k].toLocaleString()} asteroids connected` : `${s.members} suppliers · ${(s.share * 100).toFixed(1)}% of supply`,
+              ...(mining
+                ? [`Ores: ${topNames(s.output, 6)}`, `${asteroidCounts[k].toLocaleString()} asteroids connected`]
+                : [`Takes in ${topNames(s.inputs) || 'nothing local'}`, `Makes ${topNames(s.output)}`]),
               `${s.a.toFixed(2)} AU from the Sun`,
             ],
           },
@@ -343,6 +338,7 @@ export function MapSection() {
   const stationColors = useMemo(() => {
     if (!dataset) return null
     if (planSettings.hierarchical) {
+      // Every asteroid in its mining station's colour, so each patch is visible.
       if (!hierarchyResult) return null
       const out = new Uint8Array(dataset.count * 3).fill(70)
       const assignment = hierarchyResult.asteroidAssignment
@@ -521,11 +517,6 @@ export function MapSection() {
           </div>
 
           <div className={cn('flex min-h-0 flex-col gap-4', panelHeight)}>
-            <SelectedPanel
-              record={dataset && selected >= 0 ? dataset.records[selected] : null}
-              category={dataset && selected >= 0 ? categoryLabel(CATEGORY_IDS[dataset.category[selected]]) : null}
-              onClear={() => setSelected(-1)}
-            />
             {!planSettings.hierarchical ? (
               <StationsPanel
                 dataset={dataset ?? null}
