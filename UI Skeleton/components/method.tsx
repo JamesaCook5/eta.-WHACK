@@ -1,22 +1,24 @@
+import Link from 'next/link'
+
 const CARDS = [
   {
     title: 'Resource mapping',
-    body: 'Each product in the manufacturing DAG lists the feedstocks it can draw on. Those map to elements (iron, titanium, phosphorus, water…), and each asteroid gets a grade for every element from its taxonomic class: mineral make-up from the chemical DAG times each mineral’s typical yield. X-type classes are split by albedo. Inputs with no asteroid route are listed as imported from Earth.',
+    body: 'We start from the product. Each one in the manufacturing DAG lists the feedstocks it can use, and those break down into elements such as iron, titanium, phosphorus and water. Every asteroid then gets a grade for each element based on its class: the minerals the chemical DAG expects it to contain, multiplied by how much of that element each mineral typically gives up. X-types are split by albedo, and anything with no asteroid source is marked as imported from Earth.',
     file: 'tools/build_product_supply_data.py → lib/stations/product-supply.ts',
   },
   {
     title: 'Placement',
-    body: 'Weighted k-means over every filtered asteroid: each asteroid goes to its nearest station, with no distance limit and no sharing, and each station sits at the tonnage-weighted centre of its asteroids. Distance is the Δv to match an asteroid’s orbit (size, shape, tilt) plus the phasing Δv to catch up with it along the orbit within the trip time (≈ ⅔ × arc ÷ trip time). Weight is the tonnes of the product’s inputs in each body. Centaurs and Kuiper-belt objects are left out unless included, because k-means would give each a station.',
+    body: 'Stations are placed with weighted k-means over every filtered asteroid. Each asteroid goes to its nearest station, with no distance limit and no sharing, and each station sits at the tonnage-weighted centre of its asteroids. Distance is the cheapest way there: the Δv to match the asteroid’s orbit (size, shape and tilt), plus a phasing burn to catch up with it within the chosen trip time (roughly ⅔ × arc length ÷ trip time). Each asteroid is weighted by the tonnes of the product’s inputs it holds. Centaurs and Kuiper-belt objects are left out unless you include them, because k-means would give each one a station of its own.',
     file: 'lib/stations/optimise.ts',
   },
   {
     title: 'Output and ranges',
-    body: 'A station yields what its asteroids contain, in that ratio: magnetite gives iron and oxygen together, so co-products are listed alongside the product’s inputs. Mineral make-ups are uncertain, so a Monte Carlo resamples every class’s mix 1000 times (wider for classes the lookup rates low-confidence) and re-runs k-means each time. Ranges are the 5th–95th percentiles; faint dots on the map show where each station landed.',
+    body: 'A station yields what its asteroids contain, in that ratio: magnetite gives iron and oxygen together, so co-products are listed alongside the product’s inputs. Mineral make-ups are uncertain, so a Monte Carlo resamples every class’s mix 1000 times (more widely for classes the lookup rates as low confidence) and re-runs k-means each time. Ranges are the 5th to 95th percentiles, and faint dots on the map show where each station landed.',
     file: 'lib/stations/optimise.ts',
   },
   {
     title: 'Not modelled yet',
-    body: 'Extraction rates, transport schedules between stations, launch windows and propulsion limits. Asteroid positions are a snapshot, and the yields are tonnes held, not tonnes per year.',
+    body: 'Extraction rates, shipping between stations, launch windows and engine limits. Asteroid positions are a single snapshot, and yields are tonnes held, not tonnes per year.',
     file: null,
   },
 ]
@@ -28,10 +30,15 @@ export function Method() {
         <h2 id="method-title" className="font-display text-3xl font-medium tracking-tight sm:text-4xl">
           Method
         </h2>
-        <p className="mt-4 max-w-2xl leading-relaxed text-white/80">
-          Station placement runs on the DAGs and the asteroid data; cost and routing models are still to
-          come. This is how the explorer currently works.
-        </p>
+        <div className="mt-4 flex flex-col gap-6 sm:flex-row sm:items-end sm:justify-between">
+          <p className="max-w-2xl leading-relaxed text-white/80">
+            Station placement currently runs on the process DAGs and the asteroid catalogue. Costs and
+            routing are not modelled yet, so treat this as a first pass. Here is how it works today.
+          </p>
+          <Link href="/methodology" scroll={false} className="btn glass btn-glass shrink-0 gap-2 self-start sm:self-auto">
+            Full methodology <span aria-hidden="true">→</span>
+          </Link>
+        </div>
         <ul className="mt-10 grid gap-4 sm:grid-cols-2">
           {CARDS.map((card) => (
             <li key={card.title} className="glass flex flex-col gap-3 rounded-md p-6 sm:p-8">

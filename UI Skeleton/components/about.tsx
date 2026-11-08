@@ -2,35 +2,47 @@ import { cn } from '@/lib/utils'
 
 type Card = {
   label: string
-  tag?: string
   body: string
   className: string
 }
 
 // Bento layout on a 6-column grid (lg). The section has one heading, in the
 // first card; the other cards carry short labels rather than headings.
+// Each use appears in one card only.
 const CARDS: Card[] = [
   {
     label: 'Launch cost',
-    body: 'Reaching low Earth orbit alone takes roughly 9–10 km/s of Δv. Material sourced in space starts outside that gravity well, so far less propellant is spent moving it to where it is used.',
+    body: 'Just getting into low Earth orbit takes around 9–10 km/s of Δv, before the journey has properly started. Material that is already out in space skips that climb, so far less propellant goes into moving it to where it is needed.',
     className: 'lg:col-span-2',
   },
   {
     label: 'Water and volatiles',
-    tag: 'Carbon',
-    body: 'Carbonaceous asteroids contain hydrated minerals. Extracted water can be drunk, used as radiation shielding, or split into hydrogen and oxygen for propellant.',
+    body: 'Dark, carbon-rich asteroids hold water locked inside their clay minerals. Bake it out and you have water for crews to drink, and, split into hydrogen and oxygen, both air to breathe and rocket propellant.',
     className: 'lg:col-span-2',
   },
   {
     label: 'Metals',
-    tag: 'Metallic',
-    body: 'M-type asteroids are thought to be rich in iron–nickel metal: a candidate feedstock for structures built in space. Featureless X-types with moderate albedo are counted as possibly metallic.',
+    body: 'M-type asteroids look to be made largely of iron–nickel metal: the raw stock for beams, pressure tanks and printed spare parts. Some featureless X-types may be metallic too, so we count them as possible candidates when their brightness fits.',
     className: 'lg:col-span-2',
   },
   {
     label: 'Silicates',
-    tag: 'Silicates',
-    body: 'Stony asteroids are dominated by silicate minerals such as olivine and pyroxene, usable as bulk material for shielding and construction.',
+    body: 'Stony asteroids are mostly rock: silicate minerals like olivine and pyroxene. Piled around a habitat it blocks radiation, melted down it gives glass and fibre, and refined further it yields silicon for solar cells.',
+    className: 'lg:col-span-2',
+  },
+  {
+    label: 'Carbon and organics',
+    body: 'Carbonaceous asteroids carry a few percent of carbon-rich organic matter. That is the starting point for plastics and polymers, and the carbon that turns asteroid iron into steel.',
+    className: 'lg:col-span-2',
+  },
+  {
+    label: 'Platinum-group metals',
+    body: 'Metal-rich asteroids hold platinum, palladium and their relatives at parts per million. Tiny amounts go a long way as catalysts and electrical contacts, and they are among the few materials valuable enough to send back to Earth.',
+    className: 'lg:col-span-2',
+  },
+  {
+    label: 'Sulfur and phosphorus',
+    body: 'Sulfide and phosphate minerals are easy to overlook, but sulfur makes the acids used to pull metals out of ore, and phosphorus is fertiliser for growing food far from home.',
     className: 'lg:col-span-2',
   },
 ]
@@ -44,17 +56,15 @@ export function About() {
             In-situ resource utilisation
           </h2>
           <p className="mt-6 max-w-2xl text-lg leading-relaxed text-white/80">
-            ISRU means producing what a mission needs (propellant, water, oxygen, building material)
-            from resources found where it operates, instead of carrying all of it from Earth.
+            Every kilogram launched from Earth is expensive. ISRU is the idea of making what a mission
+            needs (propellant, water, oxygen, building material) from what is already out there,
+            rather than hauling all of it up from the ground.
           </p>
         </li>
 
         {CARDS.map((card) => (
           <li key={card.label} className={cn('glass flex flex-col gap-3 rounded-md p-6 sm:p-8', card.className)}>
-            <div className="flex items-baseline justify-between gap-4">
-              <p className="font-display text-lg font-medium">{card.label}</p>
-              {card.tag && <p className="font-mono text-xs text-signal">{card.tag}</p>}
-            </div>
+            <p className="font-display text-lg font-medium">{card.label}</p>
             <p className="leading-relaxed text-white/75">{card.body}</p>
           </li>
         ))}
@@ -63,9 +73,9 @@ export function About() {
           <div className="flex max-w-2xl flex-col gap-3">
             <p className="font-display text-lg font-medium">Choosing a site</p>
             <p className="leading-relaxed text-white/75">
-              A station is only worth building where the asteroid holds the right material and
-              manufacturing there is affordable. eta. combines composition with where the asteroid
-              sits to rank candidate station sites.
+              A station only makes sense where the asteroids nearby have the right material and
+              building there saves more than it costs. eta. weighs what each asteroid is made of
+              against where it sits, and ranks the best places to put one.
             </p>
           </div>
           <a href="#map" className="btn btn-primary self-start sm:self-center">
