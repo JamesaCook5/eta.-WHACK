@@ -20,10 +20,10 @@ export function RangeField({ id, label, range, step, format, onChange, disabled 
   return (
     <div className="flex flex-col gap-3">
       <div className="flex items-baseline justify-between gap-2 text-sm">
-        <span id={`${id}-label`} className="text-white/80">
+        <span id={`${id}-label`} className="text-white">
           {label}
         </span>
-        <span className="font-mono text-xs text-muted-foreground tabular-nums">
+        <span className="text-xs text-white tabular-nums">
           {loText} – {hiText}
         </span>
       </div>
@@ -57,10 +57,10 @@ export function ValueField({ id, label, value, min, max, step, format, onChange 
   return (
     <div className="flex flex-col gap-3">
       <div className="flex items-baseline justify-between gap-2 text-sm">
-        <span id={`${id}-label`} className="text-white/80">
+        <span id={`${id}-label`} className="text-white">
           {label}
         </span>
-        <span className="font-mono text-xs text-muted-foreground tabular-nums">{format(value)}</span>
+        <span className="text-xs text-white tabular-nums">{format(value)}</span>
       </div>
       <Slider
         aria-labelledby={`${id}-label`}

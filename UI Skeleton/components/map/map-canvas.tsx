@@ -346,7 +346,7 @@ export function MapCanvas({
         ref={canvasRef}
         tabIndex={0}
         role="img"
-        aria-label="Top-down map of the inner solar system showing the Sun, the orbits of Earth and Mars, and asteroids. Drag to pan, scroll or pinch to zoom, click to select. Arrow keys pan, plus and minus zoom, 0 resets the view."
+        aria-label="Top-down map of the inner solar system showing the Sun, the asteroids and the orbits of Earth and Mars. Drag to pan, scroll or pinch to zoom, click to select. Arrow keys pan, plus and minus zoom, 0 resets the view."
         className="absolute inset-0 h-full w-full cursor-crosshair touch-none focus-visible:outline-offset-[-2px]"
         onPointerDown={onPointerDown}
         onPointerMove={onPointerMove}
@@ -360,7 +360,7 @@ export function MapCanvas({
 
       {tooltipLabel && tooltip && (
         <div
-          className="pointer-events-none absolute z-10 rounded-md bg-[#1b1b1b] px-2 py-1 font-mono text-xs whitespace-nowrap text-white"
+          className="pointer-events-none absolute z-10 rounded-md bg-[#1b1b1b] px-2 py-1 text-xs whitespace-nowrap text-white"
           style={{ left: tooltip.x + 12, top: tooltip.y + 12 }}
         >
           {tooltipLabel}
@@ -369,7 +369,7 @@ export function MapCanvas({
 
       {(glError || emptyMessage) && (
         <div className="pointer-events-none absolute inset-0 flex items-center justify-center p-8">
-          <p className="max-w-sm text-center text-sm leading-relaxed text-white/75">
+          <p className="max-w-sm text-center text-sm leading-relaxed text-white">
             {glError ? `The map needs WebGL2: ${glError}` : emptyMessage}
           </p>
         </div>
@@ -386,16 +386,13 @@ export function MapCanvas({
             type="button"
             aria-label={b.aria}
             onClick={b.run}
-            className="h-8 min-w-8 rounded-md bg-white/10 px-2 font-mono text-xs text-white transition-colors hover:bg-white/18 active:bg-white/8"
+            className="h-8 min-w-8 rounded-md bg-white/10 px-2 text-xs text-white transition-colors hover:bg-white/18 active:bg-white/8"
           >
             {b.label}
           </button>
         ))}
       </div>
       {dataset && !colors && <MapLegend dataset={dataset} />}
-      <p className="pointer-events-none absolute top-3 left-3 max-w-[calc(100%-1.5rem)] truncate font-mono text-[11px] text-white/55">
-        Sun-centred · x–y plane · au{stations.length > 0 && ' · asteroids coloured by station · faint dots: Monte Carlo positions'}
-      </p>
       <StationKey stations={stations} />
       {stations.map((s, k) => (
         <div

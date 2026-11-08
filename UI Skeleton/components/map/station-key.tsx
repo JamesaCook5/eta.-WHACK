@@ -16,19 +16,19 @@ export function StationKey({ stations, className }: { stations: StationOverlay[]
     <ul
       aria-label="Station orbits"
       className={cn(
-        'pointer-events-none absolute top-8 left-3 flex max-w-[calc(100%-1.5rem)] flex-wrap gap-x-3 gap-y-1 rounded-md bg-[#070707]/80 px-2.5 py-1.5 font-mono text-[11px] text-white/80',
+        'pointer-events-none absolute top-3 left-3 flex max-w-[calc(100%-1.5rem)] flex-wrap gap-x-3 gap-y-1 rounded-md bg-[#070707]/80 px-2.5 py-1.5 text-[11px] text-white',
         className,
       )}
     >
       {listed.map((s) => (
         <li key={s.label} className={cn('flex items-center gap-1.5 tabular-nums', s.dim && 'opacity-40')}>
           <span aria-hidden="true" className="size-2 rounded-full ring-1 ring-white/30" style={{ backgroundColor: s.color }} />
-          {s.label} · {s.a.toFixed(2)} au
+          {s.label}, {s.a.toFixed(2)} AU
         </li>
       ))}
       {hidden > 0 && (
-        <li className="text-white/50">
-          {active ? `${stations.length} stations` : `+${hidden} more`} · hover a pin for details
+        <li className="text-white">
+          {active ? `${stations.length} stations` : `and ${hidden} more`}. Hover a pin for details
         </li>
       )}
     </ul>

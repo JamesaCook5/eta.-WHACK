@@ -13,7 +13,7 @@ import { MapCanvas } from './map-canvas'
 const Map3D = dynamic(() => import('./map-3d').then((m) => m.Map3D), {
   ssr: false,
   loading: () => (
-    <div className="flex h-full w-full items-center justify-center rounded-md bg-[#070707] text-sm text-white/60">
+    <div className="flex h-full w-full items-center justify-center rounded-md bg-[#070707] text-sm text-white">
       Loading 3D view…
     </div>
   ),
@@ -21,8 +21,6 @@ const Map3D = dynamic(() => import('./map-3d').then((m) => m.Map3D), {
 import { ControlsPanel } from './controls-panel'
 import { StationsPanel } from './stations-panel'
 import { SelectedPanel } from './selected-panel'
-import { SupplyPanel } from './supply-panel'
-import { estimateFeedstock, MATERIAL_SUPPLY_URL, loadMaterialSupply, type MaterialSupplyModel } from '@/lib/mission/material-supply'
 import { CATEGORY_IDS, categoryLabel } from '@/lib/asteroids/class-colors'
 import { PRODUCT_SUPPLY_URL, loadProductSupply, type ProductSupplyModel } from '@/lib/stations/product-supply'
 import { packMask } from '@/lib/stations/api'
@@ -87,18 +85,12 @@ export function MapSection() {
     revalidateIfStale: false,
     shouldRetryOnError: false,
   })
-  const { data: supplyModel } = useSWR<MaterialSupplyModel>(MATERIAL_SUPPLY_URL, loadMaterialSupply, {
-    revalidateOnFocus: false,
-    shouldRetryOnError: false,
-  })
   const { data: productModel } = useSWR<ProductSupplyModel>(PRODUCT_SUPPLY_URL, loadProductSupply, {
     revalidateOnFocus: false,
     shouldRetryOnError: false,
   })
   const [filterState, setFilterState] = useState<AsteroidFilters | null>(null)
-  const [supplyMode, setSupplyMode] = useState(false)
   const [view3d, setView3d] = useState(false)
-  const [mineralId, setMineralId] = useState('hydrated_phyllosilicates')
   const [planSettings, setPlanSettings] = useState<PlanSettings>(DEFAULT_PLAN)
   // Station in focus on the map: hovered card wins over a pinned one.
   const [hoverStation, setHoverStation] = useState(-1)
@@ -165,7 +157,7 @@ export function MapSection() {
         .sort((p, q) => q.v - p.v)
         .slice(0, 3)
         .map((x) => `${elementLabels[x.id] ?? x.id} ${total > 0 ? ((x.v / total) * 100).toFixed(1) : '0'}%`)
-        .join(' · ')
+        .join(', ')
       const cloud = result.cloud?.[k] ?? null
       return {
         label: `S${k + 1}`,
@@ -178,13 +170,12 @@ export function MapSection() {
         pinned: pinnedStation === k,
         compact: result.stations.length > 24,
         info: {
-          title: `S${k + 1} · ${product?.label ?? ''}`,
+          title: `S${k + 1}: ${product?.label ?? ''}`,
           lines: [
-            `a ${s.a.toFixed(2)} au · e ${s.e.toFixed(2)} · i ${s.i.toFixed(1)}°`,
-            `${s.members.toLocaleString()} asteroids · ${(s.share * 100).toFixed(1)}% of input tonnage`,
-            `Output: ${mix}`,
-            `Median Δv to its asteroids ${s.dvMedian.toFixed(2)} km/s`,
-            s.bunching < 0.3 ? 'Its asteroids spread all round the orbit' : `Bunching along the orbit ${s.bunching.toFixed(2)}`,
+            `${s.a.toFixed(2)} AU from the Sun`,
+            `${s.members.toLocaleString()} asteroids, ${(s.share * 100).toFixed(1)}% of the material`,
+            `Mostly ${mix}`,
+            `Typical trip ${s.dvMedian.toFixed(1)} km/s`,
           ],
         },
       }
@@ -200,30 +191,20 @@ export function MapSection() {
     return () => window.clearTimeout(t)
   }, [nominalResult])
   const onStationClick = useCallback((k: number) => setPinnedStation((cur) => (cur === k ? -1 : k)), [])
-  const supplyRows = useMemo(
-    () => (dataset && supplyModel ? estimateFeedstock(dataset, supplyModel, mineralId, mask) : []),
-    [dataset, supplyModel, mineralId, mask],
-  )
-  // Supply layer: only bodies with an estimated feedstock for the chosen mineral stay bright.
-  // Station layer: every planned body stays bright; bodies left out of the plan fade.
+  // Every planned body stays bright; bodies left out of the plan fade.
   const mapMask = useMemo(() => {
     if (!dataset) return mask
-    if (supplyMode) {
-      const visible = new Uint8Array(dataset.count)
-      for (const row of supplyRows) visible[row.index] = 1
-      return visible
-    }
     const assignment = planResult?.assignment
     if (!assignment) return mask
     const visible = new Uint8Array(dataset.count)
     for (let j = 0; j < visible.length; j++) visible[j] = assignment[j] === 255 ? 0 : 1
     return visible
-  }, [dataset, mask, supplyMode, supplyRows, planResult])
+  }, [dataset, mask, planResult])
   // Station layer colours: every asteroid in its station's colour (k-means splits them all).
   // Bodies with none of the product's inputs, and ones that change station across the
   // Monte Carlo draws, are drawn darker; other stations go grey while one is in focus.
   const stationColors = useMemo(() => {
-    if (supplyMode || !dataset || !planResult?.assignment) return null
+    if (!dataset || !planResult?.assignment) return null
     const { assignment, stability, carries } = planResult
     const rgb = planResult.stations.map((_, k) => hexToRgb01(stationColor(k)).map((v) => v * 255))
     const out = new Uint8Array(dataset.count * 3).fill(70)
@@ -241,14 +222,14 @@ export function MapSection() {
       out[o + 2] = rgb[k][2] * f
     }
     return out
-  }, [supplyMode, dataset, planResult, focusStation])
-  const mapStations = supplyMode ? NO_STATIONS : stationOverlays
+  }, [dataset, planResult, focusStation])
+  const mapStations = stationOverlays
   const visibleCount = useMemo(() => (mask ? mask.reduce((n, v) => n + v, 0) : 0), [mask])
 
   const emptyMessage = isLoading
     ? 'Loading asteroid data…'
     : error instanceof DatasetMissingError
-      ? `No dataset found at ${DATASET_URL}. Add the preprocessed ssoBFT subset there to populate the map.`
+      ? `The asteroid data is missing (expected at ${DATASET_URL}).`
       : error
         ? `The dataset could not be read: ${error instanceof Error ? error.message : String(error)}`
         : null
@@ -285,57 +266,32 @@ export function MapSection() {
           >
             Asteroid map
           </h2>
-          <div className="flex items-center gap-4">
-            <p className="font-mono text-xs text-muted-foreground tabular-nums" aria-live="polite">
+          <div className="flex flex-wrap items-center gap-3">
+            <p className="text-sm text-white tabular-nums" aria-live="polite">
               {dataset
-                ? supplyMode
-                  ? `${supplyRows.length.toLocaleString()} mapped ${supplyModel?.minerals[mineralId]?.label.toLowerCase() ?? 'feedstock'} bodies`
-                  : planResult?.assignment
-                    ? `${planResult.planned.toLocaleString()} bodies split between ${planResult.stations.length} station${planResult.stations.length === 1 ? '' : 's'}`
-                    : `${visibleCount.toLocaleString()} of ${dataset.count.toLocaleString()} match filters`
-                : 'No data'}
+                ? planResult?.assignment
+                  ? `${planResult.planned.toLocaleString()} asteroids shared between ${planResult.stations.length} station${planResult.stations.length === 1 ? '' : 's'}`
+                  : `Showing ${visibleCount.toLocaleString()} of ${dataset.count.toLocaleString()} asteroids`
+                : ''}
             </p>
+            <div className="inline-flex gap-1 rounded-md bg-white/5 p-1" role="group" aria-label="Map view">
+              {([false, true] as const).map((is3d) => (
+                <button
+                  key={String(is3d)}
+                  type="button"
+                  aria-pressed={view3d === is3d}
+                  onClick={() => setView3d(is3d)}
+                  className={cn(
+                    'h-6 rounded px-2.5 text-xs transition-colors',
+                    view3d === is3d ? 'bg-white text-[#0e0e0e]' : 'text-white hover:bg-white/10 hover:text-white',
+                  )}
+                >
+                  {is3d ? '3D' : '2D'}
+                </button>
+              ))}
+            </div>
             <button type="button" onClick={fullscreen.toggle} className="btn glass btn-glass h-8 px-3 text-xs">
               {full ? 'Exit full screen' : 'Full screen'}
-            </button>
-          </div>
-        </div>
-
-        <div className="mt-4 flex flex-wrap items-center justify-between gap-2">
-          <div className="inline-flex gap-1 rounded-md bg-white/5 p-1" role="group" aria-label="Map layer">
-            <button
-              type="button"
-              aria-pressed={!supplyMode}
-              onClick={() => setSupplyMode(false)}
-              className={cn('h-8 rounded-md px-3 text-xs transition-colors', !supplyMode ? 'bg-white text-[#0e0e0e]' : 'text-white/75 hover:bg-white/10 hover:text-white')}
-            >
-              Station plan
-            </button>
-            <button
-              type="button"
-              aria-pressed={supplyMode}
-              onClick={() => setSupplyMode(true)}
-              className={cn('h-8 rounded-md px-3 text-xs transition-colors', supplyMode ? 'bg-white text-[#0e0e0e]' : 'text-white/75 hover:bg-white/10 hover:text-white')}
-            >
-              Material supply
-            </button>
-          </div>
-          <div className="inline-flex gap-1 rounded-md bg-white/5 p-1" role="group" aria-label="Map dimensions">
-            <button
-              type="button"
-              aria-pressed={!view3d}
-              onClick={() => setView3d(false)}
-              className={cn('h-8 rounded-md px-3 text-xs transition-colors', !view3d ? 'bg-white text-[#0e0e0e]' : 'text-white/75 hover:bg-white/10 hover:text-white')}
-            >
-              2D
-            </button>
-            <button
-              type="button"
-              aria-pressed={view3d}
-              onClick={() => setView3d(true)}
-              className={cn('h-8 rounded-md px-3 text-xs transition-colors', view3d ? 'bg-white text-[#0e0e0e]' : 'text-white/75 hover:bg-white/10 hover:text-white')}
-            >
-              3D
             </button>
           </div>
         </div>
@@ -397,21 +353,12 @@ export function MapSection() {
             </div>
           </div>
 
-          <div className={cn('flex min-h-0 flex-col gap-4', panelHeight, supplyMode && 'overflow-y-auto')}>
+          <div className={cn('flex min-h-0 flex-col gap-4', panelHeight)}>
             <SelectedPanel
               record={dataset && selected >= 0 ? dataset.records[selected] : null}
               category={dataset && selected >= 0 ? categoryLabel(CATEGORY_IDS[dataset.category[selected]]) : null}
               onClear={() => setSelected(-1)}
             />
-            {supplyMode ? (
-              <SupplyPanel
-                dataset={dataset ?? null}
-                model={supplyModel ?? null}
-                mineralId={mineralId}
-                onMineralChange={setMineralId}
-                mask={mask}
-              />
-            ) : (
               <StationsPanel
                 dataset={dataset ?? null}
                 model={productModel ?? null}
@@ -427,7 +374,6 @@ export function MapSection() {
                 onSelect={setSelected}
                 onHover={setHovered}
               />
-            )}
           </div>
         </div>
       </div>

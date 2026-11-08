@@ -87,7 +87,7 @@ export function StationPin({ station, fresh, onHover, onClick }: StationPinProps
       {showLabel && (
         <span
           aria-hidden="true"
-          className="pointer-events-none absolute top-0 left-3 -translate-y-1/2 rounded-sm px-1 py-px font-mono text-[11px] leading-tight font-semibold text-[#0b0b0b] shadow-[0_0_0_2px_rgba(0,0,0,0.6)]"
+          className="pointer-events-none absolute top-0 left-3 -translate-y-1/2 rounded-sm px-1 py-px text-[11px] leading-tight font-semibold text-[#0b0b0b] shadow-[0_0_0_2px_rgba(0,0,0,0.6)]"
           style={{ backgroundColor: station.color }}
         >
           {station.label}
@@ -104,14 +104,11 @@ export function StationPin({ station, fresh, onHover, onClick }: StationPinProps
           style={{ borderColor: station.color }}
         >
           <p className="text-xs text-white">{station.info.title}</p>
-          <ul className="mt-1 flex flex-col gap-0.5 font-mono text-[11px] text-white/75 tabular-nums">
+          <ul className="mt-1 flex flex-col gap-0.5 text-[11px] text-white tabular-nums">
             {station.info.lines.map((line) => (
               <li key={line}>{line}</li>
             ))}
           </ul>
-          <p className="mt-1.5 text-[10px] text-white/45">
-            {station.pinned ? 'Click to show all stations' : 'Click to keep this station in focus'}
-          </p>
         </div>
       )}
     </div>

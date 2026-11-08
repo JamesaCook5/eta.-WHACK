@@ -25,7 +25,7 @@ export function MapLegend({ dataset }: { dataset: AsteroidDataset }) {
   return (
     <ul
       aria-label="Composition colours"
-      className="pointer-events-none absolute bottom-3 left-3 flex max-w-[calc(100%-8.5rem)] flex-wrap gap-x-3 gap-y-1 rounded-md bg-[#070707]/80 px-2.5 py-1.5 font-mono text-[11px] text-white/75"
+      className="pointer-events-none absolute bottom-3 left-3 flex max-w-[calc(100%-8.5rem)] flex-wrap gap-x-3 gap-y-1 rounded-md bg-[#070707]/80 px-2.5 py-1.5 text-[11px] text-white"
     >
       {legend.map((entry) => (
         <li key={entry.id} className="flex items-center gap-1.5">

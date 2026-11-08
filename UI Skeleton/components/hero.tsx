@@ -7,7 +7,7 @@ export function Hero() {
         <h1 id="hero-title" className="text-7xl leading-none sm:text-9xl">
           <Wordmark />
         </h1>
-        <p className="mt-8 max-w-xl text-lg leading-relaxed text-white/80 sm:text-xl">
+        <p className="mt-8 max-w-xl text-lg leading-relaxed text-white sm:text-xl">
           eta. finds asteroids where resource stations could supply deep-space missions with water,
           metals and silicates mined in place, instead of launched from Earth.
         </p>
