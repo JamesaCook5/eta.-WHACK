@@ -9,7 +9,7 @@ const LINKS = [
 
 export function SiteHeader({ current }: { current?: 'methodology' }) {
   return (
-    <header className="sticky top-4 z-40 px-4">
+    <header className="relative z-40 px-4 pt-4">
       <div className="glass mx-auto grid h-14 max-w-3xl grid-cols-[1fr_auto_1fr] items-center gap-4 rounded-md px-5">
         <Link href="/" className="justify-self-start text-xl" aria-label="eta. home">
           <Wordmark />
