@@ -21,24 +21,53 @@ export function topNames(values?: Record<string, number>, n = 3) {
   return names.length > 1 ? `${names.slice(0, -1).join(', ')} and ${names[names.length - 1]}` : (names[0] ?? '')
 }
 
-/** What a station handles, largest first, as names only. */
-function Names({ title, values, max = 10 }: { title: string; values?: Record<string, number>; max?: number }) {
-  const names = Object.entries(values ?? {})
-    .filter(([, t]) => t > 0)
+/** Share of the total, as "34%", "4.2%" or "<0.1%". */
+export function formatShare(part: number, total: number) {
+  const p = total > 0 ? (part / total) * 100 : 0
+  return p >= 10 ? `${Math.round(p)}%` : p >= 0.1 ? `${p.toFixed(1)}%` : '<0.1%'
+}
+
+/** "iron 34%, oxygen 28% and silicon 24%": the largest few, with their share of the total. */
+export function topShares(values?: Record<string, number>, n = 3) {
+  const rows = Object.entries(values ?? {}).filter(([, t]) => t > 0)
+  const total = rows.reduce((sum, [, t]) => sum + t, 0)
+  const parts = rows
     .sort((x, y) => y[1] - x[1])
-    .slice(0, max)
-    .map(([id]) => nameOf(id))
-  if (names.length === 0) return null
+    .slice(0, n)
+    .map(([id, t]) => `${nameOf(id).toLowerCase()} ${formatShare(t, total)}`)
+  return parts.length > 1 ? `${parts.slice(0, -1).join(', ')} and ${parts[parts.length - 1]}` : (parts[0] ?? '')
+}
+
+/** What a station handles, largest first; with `percent`, each one's share of the total. */
+function Names({ title, values, max = 10, percent = false }: { title: string; values?: Record<string, number>; max?: number; percent?: boolean }) {
+  const rows = Object.entries(values ?? {}).filter(([, t]) => t > 0)
+  const total = rows.reduce((sum, [, t]) => sum + t, 0)
+  const shown = rows.sort((x, y) => y[1] - x[1]).slice(0, max)
+  if (shown.length === 0) return null
   return (
     <div className="flex flex-col gap-1.5">
       <p className="text-xs font-medium text-white">{title}</p>
-      <ul className="flex flex-wrap gap-1">
-        {names.map((name) => (
-          <li key={name} className="rounded-md bg-white/8 px-2 py-0.5 text-xs text-white">
-            {name}
-          </li>
-        ))}
-      </ul>
+      {percent ? (
+        <ul className="flex flex-col gap-1 text-xs text-white tabular-nums">
+          {shown.map(([id, t]) => (
+            <li key={id} className="grid grid-cols-[6.5rem_minmax(0,1fr)_3rem] items-center gap-2">
+              <span className="truncate">{nameOf(id)}</span>
+              <span className="h-1.5 overflow-hidden rounded-full bg-white/10">
+                <span className="block h-full rounded-full bg-white" style={{ width: `${(t / shown[0][1]) * 100}%` }} />
+              </span>
+              <span className="text-right">{formatShare(t, total)}</span>
+            </li>
+          ))}
+        </ul>
+      ) : (
+        <ul className="flex flex-wrap gap-1">
+          {shown.map(([id]) => (
+            <li key={id} className="rounded-md bg-white/8 px-2 py-0.5 text-xs text-white">
+              {nameOf(id)}
+            </li>
+          ))}
+        </ul>
+      )}
     </div>
   )
 }
@@ -89,17 +118,6 @@ export function HierarchyPanel({ result, error, asteroidCounts, miningStations, 
         Where the stations go
       </p>
       <div className="flex min-h-0 flex-col gap-4 overflow-y-auto px-5 pb-5">
-        {result.production && (
-          <p className="text-xs text-white">
-            Modeled output: {result.production.availableKg.toPrecision(3)} kg of {result.production.demandKg.toPrecision(3)} kg
-            {' '}({(result.production.coverage * 100).toFixed(1)}% supplied)
-          </p>
-        )}
-        {result.quantitiesInferred && (
-          <p className="rounded-md bg-amber-200/10 p-2 text-xs text-amber-100">
-            Some recipe quantities are missing; those steps use a 1 kg per kg target estimate.
-          </p>
-        )}
         {s ? (
           <div className="flex flex-col gap-2 rounded-md bg-white/4 p-3" style={{ boxShadow: `inset 0 0 0 1.5px ${colors[k] ?? '#ffffff'}` }}>
             <div className="flex items-center justify-between gap-2">
@@ -121,7 +139,7 @@ export function HierarchyPanel({ result, error, asteroidCounts, miningStations, 
             <p className="text-xs text-white tabular-nums">{s.a.toFixed(2)} AU from the Sun</p>
             <div className="mt-1 flex flex-col gap-3 border-t border-white/10 pt-3">
               {mining ? (
-                <Names title="Ores" values={s.output} />
+                <Names title="Ores" values={s.output} percent />
               ) : (
                 <>
                   <Names title="Takes in" values={s.inputs} />

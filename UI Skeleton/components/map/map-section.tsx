@@ -20,7 +20,7 @@ const Map3D = dynamic(() => import('./map-3d').then((m) => m.Map3D), {
 })
 import { ControlsPanel } from './controls-panel'
 import { StationsPanel } from './stations-panel'
-import { HierarchyPanel, prettyMaterial, topNames } from './hierarchy-panel'
+import { HierarchyPanel, prettyMaterial, topNames, topShares } from './hierarchy-panel'
 import { PRODUCT_SUPPLY_URL, loadProductSupply, type ProductSupplyModel } from '@/lib/stations/product-supply'
 import { packMask, requestHierarchy, type HierarchyResult } from '@/lib/stations/api'
 import { DEFAULT_PLAN, MONTE_CARLO_DRAWS, type PlanSettings } from '@/lib/stations/settings'
@@ -262,7 +262,7 @@ export function MapSection() {
             title: `S${k + 1}: ${mining ? 'Mining station' : prettyMaterial(s.material)}`,
             lines: [
               ...(mining
-                ? [`Ores: ${topNames(s.output, 6)}`, `${asteroidCounts[k].toLocaleString()} asteroids connected`]
+                ? [`Ores: ${topShares(s.output, 4)}`, `${asteroidCounts[k].toLocaleString()} asteroids connected`]
                 : [`Takes in ${topNames(s.inputs) || 'nothing local'}`, `Makes ${topNames(s.output)}`]),
               `${s.a.toFixed(2)} AU from the Sun`,
             ],
