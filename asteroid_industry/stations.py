@@ -15,6 +15,11 @@ about (2/3)·a·Δθ / T, which in units of v is q·Δθ with q = (2/3)·P / (2�
 P the orbital period. Points on a circle of radius q give that cost for small
 Δθ and keep the space Euclidean, so the embedding supports Euclidean-distance optimization.
 
+The embedding is a transfer-cost proxy, not a Lambert solver or an exact delta-v
+model. The geometric median is optimal in the unconstrained embedding; converting
+that center back to orbit elements does not guarantee the exact optimum among
+physically feasible station orbits.
+
 Clustering
 ----------
 Weight w_j = tonnes of the product's asteroid-sourced elements in body j (mass

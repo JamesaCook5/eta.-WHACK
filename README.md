@@ -13,7 +13,7 @@
 
 ## Running the app
 
-The station planner (weighted k-median / multi-source Weber heuristic) runs in Python; the UI only calls it and draws the result.
+The station planner uses weighted multi-source Weber optimization (Weiszfeld updates) in a five-dimensional orbital proxy. It estimates relative transfer difficulty; it does not solve time-dependent Lambert transfers or exact mission Δv, and converting the proxy median back to an orbit is approximate. The Python API runs the planner, and the UI draws its result.
 
 ```sh
 pip install -r requirements.txt

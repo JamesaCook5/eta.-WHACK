@@ -5,11 +5,11 @@ should we mine for this product's elements?"  This module answers the next
 question: given a product whose manufacture needs intermediates, where should
 each stage of the production network sit?
 
-The model uses the same physical proxy as the single-tier planner: an orbit is
-embedded in a five-dimensional Euclidean space, and straight-line distance
-approximates relative transfer cost. Station centers use weighted geometric
-medians to minimize the modeled linear transport cost. No Lambert solver,
-launch windows or propellant model is used.
+The model uses the same five-dimensional orbital proxy as the single-tier
+planner. Straight-line distance in that embedding estimates relative transfer
+difficulty; weighted geometric medians minimize the sum of those proxy distances.
+This is not a time-dependent delta-v calculation. No Lambert solver, launch
+windows or propulsion model is used.
 
 Pipeline
 --------

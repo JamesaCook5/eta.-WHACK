@@ -25,7 +25,7 @@ export function StationKey({ stations, className }: { stations: StationOverlay[]
           <span
             aria-hidden="true"
             className={cn('size-2 border border-white/55', s.shape === 'diamond' ? 'rotate-45 rounded-[1px]' : 'rounded-full bg-white/10')}
-            style={s.shape === 'diamond' ? { backgroundColor: s.color } : undefined}
+            style={s.shape === 'diamond' ? { backgroundColor: s.feedstockColor ?? s.color } : undefined}
           />
           {s.label}, {s.a.toFixed(2)} AU
         </li>

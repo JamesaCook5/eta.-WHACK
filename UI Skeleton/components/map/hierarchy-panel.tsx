@@ -18,12 +18,13 @@ interface Props {
   focusStation: number
   pinnedStation: number
   colors: string[]
+  feedstockColors: string[]
   onHoverStation: (k: number) => void
   onPinStation: (k: number) => void
 }
 
 /** Right-hand panel for the production-chain plan: mining stations and the station you click. */
-export function HierarchyPanel({ result, error, asteroidCounts, miningStations, focusStation, pinnedStation, colors, onHoverStation, onPinStation }: Props) {
+export function HierarchyPanel({ result, error, asteroidCounts, miningStations, focusStation, pinnedStation, colors, feedstockColors, onHoverStation, onPinStation }: Props) {
   if (error) return <p className="glass rounded-md p-4 text-sm text-red-200">Production plan failed: {error}</p>
   if (!result) return <p className="glass rounded-md p-5 text-sm text-white">Planning the production chain…</p>
 
@@ -43,7 +44,7 @@ export function HierarchyPanel({ result, error, asteroidCounts, miningStations, 
           <div className="flex flex-col gap-2 rounded-md bg-white/4 p-3" style={{ boxShadow: `inset 0 0 0 1.5px ${colors[k] ?? '#ffffff'}` }}>
             <div className="flex items-center justify-between gap-2">
               <span className="flex items-center gap-2 text-sm text-white">
-                <span aria-hidden="true" className="size-2.5 rotate-45 rounded-[1px]" style={{ backgroundColor: colors[k] ?? '#ffffff' }} />
+                <span aria-hidden="true" className="size-2.5 rotate-45 rounded-[1px]" style={{ backgroundColor: mining ? feedstockColors[k] ?? colors[k] ?? '#ffffff' : colors[k] ?? '#ffffff' }} />
                 S{k + 1}
               </span>
               <button type="button" onClick={() => onPinStation(k)} className="text-xs text-white hover:opacity-70">
@@ -83,7 +84,7 @@ export function HierarchyPanel({ result, error, asteroidCounts, miningStations, 
                   )}
                 >
                   <span className="flex items-center gap-2">
-                    <span aria-hidden="true" className="size-2.5 rotate-45 rounded-[1px]" style={{ backgroundColor: colors[i] ?? '#ffffff' }} />
+                    <span aria-hidden="true" className="size-2.5 rotate-45 rounded-[1px]" style={{ backgroundColor: feedstockColors[i] ?? colors[i] ?? '#ffffff' }} />
                     S{i + 1}
                   </span>
                   <span className="tabular-nums">{asteroidCounts[i].toLocaleString()} asteroids</span>

@@ -179,14 +179,17 @@ function Placement() {
   return (
     <>
       <p>
-        For a trip in space what matters is how much the craft has to change its speed, not how far apart two points
-        look on a map. So before placing anything we put every asteroid in a space where distance means that change in
-        speed. Orbits of a similar size, shape and tilt end up close together. So do asteroids that sit near each other
-        along the same orbit, as long as the craft has enough time to catch up.
+        For a trip in space, distance on a picture is a poor guide to fuel. Our planner embeds orbital elements in a
+        five-dimensional proxy: orbit size, shape, tilt and a phase term that depends on the allowed trip time. Similar
+        orbits and asteroids that are easier to catch along an orbit sit close together in this proxy. It estimates
+        relative transfer difficulty; it is not a time-dependent Lambert transfer or an exact Δv calculation.
       </p>
       <p>
-        Then we use weighted k-means. Each station sits at the centre of the asteroids nearest to it, with the asteroids
-        holding the most of the product’s ingredients pulling hardest. Every asteroid belongs to its nearest station.
+        We use a weighted multi-source Weber method with Weiszfeld updates. Each source belongs to its nearest station
+        in the proxy, and the station moves to the weighted geometric median of its assigned sources. This minimizes
+        total weighted distance in the proxy, not actual mission Δv. The median is then converted to a candidate orbit
+        for a free-flying station. Since phase and orbit size are coupled for a real orbit, that conversion is also an
+        approximation to the constrained optimum.
       </p>
       <h3>Why more stations help</h3>
       <p>

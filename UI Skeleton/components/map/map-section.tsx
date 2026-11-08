@@ -193,6 +193,10 @@ export function MapSection() {
   const hierarchyStationColors = useMemo(() => {
     return hierarchyResult?.stations.map((s, k) => s.tier === 0 && !s.process ? RAW_STATION_COLOR : stationColor(k)) ?? []
   }, [hierarchyResult])
+  const feedstockColors = useMemo(
+    () => hierarchyResult?.stations.map((_, k) => stationColor(k)) ?? [],
+    [hierarchyResult],
+  )
   const hierarchyLinks = useMemo(() => {
     if (!planSettings.hierarchical || !hierarchyResult) return null
     const coordinates: number[] = []
@@ -247,6 +251,7 @@ export function MapSection() {
           label: `S${k + 1}`,
           color: hierarchyStationColors[k] ?? stationColor(k),
           shape: 'diamond',
+          feedstockColor: mining ? feedstockColors[k] : undefined,
           links: linkCoordinates.length > 0 ? new Float32Array(linkCoordinates) : undefined,
           a: s.a,
           position: [s.a * Math.cos(lon), s.a * Math.sin(lon), 0] as [number, number, number],
@@ -304,7 +309,7 @@ export function MapSection() {
         },
       }
     })
-  }, [planResult, hierarchyResult, planSettings.hierarchical, pinnedIndices, asteroidCounts, hierarchyStationColors, elementLabels, product, focusStation, pinnedStation])
+  }, [planResult, hierarchyResult, planSettings.hierarchical, pinnedIndices, asteroidCounts, hierarchyStationColors, feedstockColors, elementLabels, product, focusStation, pinnedStation])
   // Pulse the station pins for a few seconds whenever a new plan arrives.
   const [freshStations, setFreshStations] = useState(false)
   const nominalResult = !planSettings.hierarchical && plan.status === 'sampling' ? plan.result : null
@@ -331,10 +336,30 @@ export function MapSection() {
     for (let j = 0; j < visible.length; j++) visible[j] = assignment[j] === 255 ? 0 : 1
     return visible
   }, [dataset, mask, planResult, planSettings.hierarchical, hierarchyResult])
-  // Flat plans color asteroids by assigned station. Hierarchy mode keeps their native
-  // material colors so the production links and station markers carry the hierarchy cues.
+  // Color feedstock asteroids by their assigned mining station while keeping the
+  // station pins themselves neutral in hierarchy mode.
   const stationColors = useMemo(() => {
-    if (!dataset || planSettings.hierarchical) return null
+    if (!dataset) return null
+    if (planSettings.hierarchical) {
+      if (!hierarchyResult) return null
+      const out = new Uint8Array(dataset.count * 3).fill(70)
+      const assignment = hierarchyResult.asteroidAssignment
+      const focusMining = focusStation >= 0 && miningStations.includes(focusStation)
+      for (let j = 0; j < dataset.count; j++) {
+        const k = miningStations[assignment[j]]
+        if (assignment[j] === 255 || k === undefined) continue
+        const o = j * 3
+        if (focusMining && k !== focusStation) {
+          out[o] = out[o + 1] = out[o + 2] = 85
+          continue
+        }
+        const [r, g, b] = hexToRgb01(stationColor(k))
+        out[o] = 255 * r
+        out[o + 1] = 255 * g
+        out[o + 2] = 255 * b
+      }
+      return out
+    }
     if (!planResult?.assignment) return null
     const { assignment, stability, carries } = planResult
     const rgb = planResult.stations.map((_, k) => hexToRgb01(stationColor(k)).map((v) => v * 255))
@@ -353,7 +378,7 @@ export function MapSection() {
       out[o + 2] = rgb[k][2] * f
     }
     return out
-  }, [dataset, planResult, focusStation, planSettings.hierarchical])
+  }, [dataset, planResult, focusStation, planSettings.hierarchical, hierarchyResult, miningStations])
   const mapStations = stationOverlays
   // The maps report positions in mapStations; turn them back into station numbers.
   const onMapStationHover = useCallback((i: number) => setHoverStation(i < 0 ? -1 : (pinnedIndices?.[i] ?? i)), [pinnedIndices])
@@ -526,6 +551,7 @@ export function MapSection() {
                 onHoverStation={setHoverStation}
                 onPinStation={onStationClick}
                 colors={hierarchyStationColors}
+                feedstockColors={feedstockColors}
               />
             )}
           </div>

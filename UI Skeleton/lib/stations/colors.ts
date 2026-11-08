@@ -31,6 +31,8 @@ export interface StationOverlay {
   color: string
   /** Higher-level production station markers use diamonds. */
   shape?: 'circle' | 'diamond'
+  /** Color of this station's assigned feedstock field, while the raw pin stays neutral. */
+  feedstockColor?: string
   /** Flat pairs of endpoint coordinates (x1, y1, x2, y2), drawn when this station is focused. */
   links?: Float32Array
   /** Semi-major axis of the station's orbit, au (drawn as a ring in the ecliptic). */
