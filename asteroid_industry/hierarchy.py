@@ -452,6 +452,7 @@ class SourcePoint:
     amount: dict[str, float] = field(default_factory=dict)
     origin: str = ""
     index: int | None = None
+    source_station_id: int | None = None
     asteroid_indices: list[int] = field(default_factory=list)
 
 
@@ -635,6 +636,13 @@ class HierarchicalPlanner:
                     "share": float(station_held / total_w) if total_w > 0 else 0.0,
                     "dvMedian": dv_median,
                     "output": amount,
+                    "sourceStationIds": sorted(
+                        {
+                            int(usable[j].source_station_id)
+                            for j in members
+                            if usable[j].source_station_id is not None
+                        }
+                    ),
                     "asteroidIndices": [index for j in members for index in usable[j].asteroid_indices],
                     "topMembers": [
                         {
@@ -680,7 +688,7 @@ class HierarchicalPlanner:
                             material=child.material,
                             amount={child.material: available},
                             origin="tier0",
-                            index=None,
+                            source_station_id=station.get("_stationId"),
                         )
                     )
             else:
@@ -699,7 +707,7 @@ class HierarchicalPlanner:
                             material=child.material,
                             amount={child.material: available},
                             origin=f"tier{child.tier}",
-                            index=None,
+                            source_station_id=station.get("_stationId"),
                         )
                     )
         return sources, external
@@ -767,6 +775,14 @@ class HierarchicalPlanner:
 
         rows = self._asteroid_rows(include_outer, mask)
         tier0: list[dict] = []
+        next_station_id = 0
+
+        def assign_station_ids(stations: Sequence[dict]) -> None:
+            nonlocal next_station_id
+            for station in stations:
+                station["_stationId"] = next_station_id
+                next_station_id += 1
+
         if rows.size:
             raw_sources = self._raw_sources(root, rows, trip_years)
             tier0 = self._place_sources(
@@ -778,6 +794,7 @@ class HierarchicalPlanner:
                 material="raw feedstocks",
                 rng=rng,
             )
+            assign_station_ids(tier0)
 
         for node in _walk_postorder(root):
             if node.is_raw or node.is_external or node.recipe is None:
@@ -795,6 +812,7 @@ class HierarchicalPlanner:
                 material=node.material,
                 rng=rng,
             )
+            assign_station_ids(node.stations)
             self._station_outputs(node, node.stations)
 
         tier_groups: dict[int, list[dict]] = {}
@@ -821,12 +839,24 @@ class HierarchicalPlanner:
             }
             for tier in range(max_tier + 1)
         ]
+        stations = [station for tier in tiers for station in tier["stations"]]
+        station_index_by_id = {
+            station.pop("_stationId"): station_index
+            for station_index, station in enumerate(stations)
+        }
+        for station in stations:
+            source_ids = station.pop("sourceStationIds", [])
+            station["sourceStations"] = [
+                station_index_by_id[source_id]
+                for source_id in source_ids
+                if source_id in station_index_by_id
+            ]
         return {
             "product": product_id,
             "productLabel": self.recipes.product_catalogue.get(product_id, {}).get("label", product_id),
             "tree": root.to_dict(),
             "tiers": tiers,
-            "stations": [station for tier in tiers for station in tier["stations"]],
+            "stations": stations,
             "asteroidAssignment": base64.b64encode(asteroid_assignment.tobytes()).decode("ascii"),
             "draws": 0,
             "tripYears": trip_years,

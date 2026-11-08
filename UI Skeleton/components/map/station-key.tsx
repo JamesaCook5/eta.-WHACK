@@ -22,7 +22,11 @@ export function StationKey({ stations, className }: { stations: StationOverlay[]
     >
       {listed.map((s) => (
         <li key={s.label} className={cn('flex items-center gap-1.5 tabular-nums', s.dim && 'opacity-40')}>
-          <span aria-hidden="true" className="size-2 rounded-full border border-white/55 bg-white/10" />
+          <span
+            aria-hidden="true"
+            className={cn('size-2 border border-white/55', s.shape === 'diamond' ? 'rotate-45 rounded-[1px]' : 'rounded-full bg-white/10')}
+            style={s.shape === 'diamond' ? { backgroundColor: s.color } : undefined}
+          />
           {s.label}, {s.a.toFixed(2)} AU
         </li>
       ))}

@@ -32,6 +32,7 @@ import { hexToRgb01, stationColor, type StationOverlay } from '@/lib/stations/co
 const NO_STATIONS: StationOverlay[] = []
 /** Above this many stations, only mining stations and the focused one get map pins. */
 const PIN_LIMIT = 60
+const RAW_STATION_COLOR = '#777777'
 
 /**
  * Full screen for the map and both sidebars. Uses the Fullscreen API where the
@@ -190,8 +191,24 @@ export function MapSection() {
     return [...keep].sort((x, y) => x - y)
   }, [planSettings.hierarchical, hierarchyResult, miningStations, focusStation, pinnedStation])
   const hierarchyStationColors = useMemo(() => {
-    return hierarchyResult?.stations.map((_, k) => stationColor(k)) ?? []
+    return hierarchyResult?.stations.map((s, k) => s.tier === 0 && !s.process ? RAW_STATION_COLOR : stationColor(k)) ?? []
   }, [hierarchyResult])
+  const hierarchyLinks = useMemo(() => {
+    if (!planSettings.hierarchical || !hierarchyResult) return null
+    const coordinates: number[] = []
+    for (const station of hierarchyResult.stations) {
+      const lon = (station.longitude * Math.PI) / 180
+      const x = station.a * Math.cos(lon)
+      const y = station.a * Math.sin(lon)
+      for (const sourceIndex of station.sourceStations) {
+        const source = hierarchyResult.stations[sourceIndex]
+        if (!source) continue
+        const sourceLon = (source.longitude * Math.PI) / 180
+        coordinates.push(source.a * Math.cos(sourceLon), source.a * Math.sin(sourceLon), x, y)
+      }
+    }
+    return new Float32Array(coordinates)
+  }, [planSettings.hierarchical, hierarchyResult])
   const stationDots = useMemo(() => {
     if (!planSettings.hierarchical || !hierarchyResult || hierarchyResult.stations.length <= PIN_LIMIT) return null
     const groups = new Map<string, number[]>()
@@ -213,10 +230,24 @@ export function MapSection() {
         const s = hierarchyResult.stations[k]
         const mining = s.tier === 0 && !s.process
         const lon = (s.longitude * Math.PI) / 180
+        const linkCoordinates: number[] = []
+        for (const sourceIndex of s.sourceStations) {
+          const source = hierarchyResult.stations[sourceIndex]
+          if (!source) continue
+          const sourceLon = (source.longitude * Math.PI) / 180
+          linkCoordinates.push(
+            source.a * Math.cos(sourceLon),
+            source.a * Math.sin(sourceLon),
+            s.a * Math.cos(lon),
+            s.a * Math.sin(lon),
+          )
+        }
         const entries = (obj?: Record<string, number>) => Object.entries(obj ?? {}).sort((a, b) => b[1] - a[1]).slice(0, 3).map(([name, amount]) => `${name} ${amount.toPrecision(3)} t`).join(' · ') || 'none'
         return {
           label: `S${k + 1}`,
           color: hierarchyStationColors[k] ?? stationColor(k),
+          shape: 'diamond',
+          links: linkCoordinates.length > 0 ? new Float32Array(linkCoordinates) : undefined,
           a: s.a,
           position: [s.a * Math.cos(lon), s.a * Math.sin(lon), 0] as [number, number, number],
           cloud: null,
@@ -300,31 +331,10 @@ export function MapSection() {
     for (let j = 0; j < visible.length; j++) visible[j] = assignment[j] === 255 ? 0 : 1
     return visible
   }, [dataset, mask, planResult, planSettings.hierarchical, hierarchyResult])
-  // Station layer colours: every asteroid in its station's colour.
-  // Bodies with none of the product's inputs, and ones that change station across the
-  // Monte Carlo draws, are drawn darker; other stations go grey while one is in focus.
+  // Flat plans color asteroids by assigned station. Hierarchy mode keeps their native
+  // material colors so the production links and station markers carry the hierarchy cues.
   const stationColors = useMemo(() => {
-    if (!dataset) return null
-    if (planSettings.hierarchical) {
-      if (!hierarchyResult) return null
-      const out = new Uint8Array(dataset.count * 3).fill(70)
-      const assignment = hierarchyResult.asteroidAssignment
-      const focusMining = focusStation >= 0 && miningStations.includes(focusStation)
-      for (let j = 0; j < dataset.count; j++) {
-        const k = miningStations[assignment[j]]
-        if (assignment[j] === 255 || k === undefined) continue
-        const o = j * 3
-        if (focusMining && k !== focusStation) {
-          out[o] = out[o + 1] = out[o + 2] = 85
-          continue
-        }
-        const [r, g, b] = hexToRgb01(hierarchyStationColors[k] ?? stationColor(k))
-        out[o] = 255 * r
-        out[o + 1] = 255 * g
-        out[o + 2] = 255 * b
-      }
-      return out
-    }
+    if (!dataset || planSettings.hierarchical) return null
     if (!planResult?.assignment) return null
     const { assignment, stability, carries } = planResult
     const rgb = planResult.stations.map((_, k) => hexToRgb01(stationColor(k)).map((v) => v * 255))
@@ -343,7 +353,7 @@ export function MapSection() {
       out[o + 2] = rgb[k][2] * f
     }
     return out
-  }, [dataset, planResult, focusStation, planSettings.hierarchical, hierarchyResult, miningStations, hierarchyStationColors])
+  }, [dataset, planResult, focusStation, planSettings.hierarchical])
   const mapStations = stationOverlays
   // The maps report positions in mapStations; turn them back into station numbers.
   const onMapStationHover = useCallback((i: number) => setHoverStation(i < 0 ? -1 : (pinnedIndices?.[i] ?? i)), [pinnedIndices])
@@ -453,6 +463,7 @@ export function MapSection() {
                   colors={stationColors}
                   freshStations={freshStations}
                   stationDots={stationDots}
+                  hierarchyLinks={hierarchyLinks}
                   onStationHover={onMapStationHover}
                   onStationClick={onMapStationClick}
                   hovered={hovered}
@@ -469,6 +480,7 @@ export function MapSection() {
                   colors={stationColors}
                   freshStations={freshStations}
                   stationDots={stationDots}
+                  hierarchyLinks={hierarchyLinks}
                   onStationHover={onMapStationHover}
                   onStationClick={onMapStationClick}
                   hovered={hovered}

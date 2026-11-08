@@ -260,6 +260,53 @@ function StationDots({ xy, mode, color }: { xy: Float32Array; mode: DistanceScal
   return <Markers positions={pts} indices={indices} size={5} ring={false} color={color} order={3} />
 }
 
+/** Draw the focused station's actual upstream station assignments. */
+function StationLinks({ stations, mode, hierarchyLinks }: { stations: StationOverlay[]; mode: DistanceScale; hierarchyLinks: Float32Array | null }) {
+  const [allGeometry, focusedGeometry] = useMemo(() => {
+    const all: number[] = []
+    if (hierarchyLinks) {
+      for (let i = 0; i + 3 < hierarchyLinks.length; i += 4) {
+        const [x1, y1] = scalePoint([hierarchyLinks[i], hierarchyLinks[i + 1], 0], mode)
+        const [x2, y2] = scalePoint([hierarchyLinks[i + 2], hierarchyLinks[i + 3], 0], mode)
+        all.push(x1, y1, 0, x2, y2, 0)
+      }
+    }
+    const focused: number[] = []
+    for (const station of stations) {
+      if (!station.active || !station.links) continue
+      for (let i = 0; i + 3 < station.links.length; i += 4) {
+        const [x1, y1] = scalePoint([station.links[i], station.links[i + 1], 0], mode)
+        const [x2, y2] = scalePoint([station.links[i + 2], station.links[i + 3], 0], mode)
+        focused.push(x1, y1, 0, x2, y2, 0)
+      }
+    }
+    const makeGeometry = (positions: number[]) => {
+      const value = new THREE.BufferGeometry()
+      value.setAttribute('position', new THREE.Float32BufferAttribute(positions, 3))
+      return value
+    }
+    return [makeGeometry(all), makeGeometry(focused)] as const
+  }, [stations, mode, hierarchyLinks])
+  useEffect(() => () => {
+    allGeometry.dispose()
+    focusedGeometry.dispose()
+  }, [allGeometry, focusedGeometry])
+  return (
+    <>
+      {allGeometry.getAttribute('position').count > 0 && (
+        <lineSegments geometry={allGeometry}>
+          <lineBasicMaterial color="#8e9fb7" transparent opacity={0.24} depthWrite={false} />
+        </lineSegments>
+      )}
+      {focusedGeometry.getAttribute('position').count > 0 && (
+        <lineSegments geometry={focusedGeometry}>
+          <lineBasicMaterial color="#c3d8f7" transparent opacity={0.78} depthWrite={false} />
+        </lineSegments>
+      )}
+    </>
+  )
+}
+
 /**
  * Moves the station pins (plain DOM over the canvas) to their projected screen
  * positions on every rendered frame; pins behind the camera are hidden.
@@ -511,8 +558,10 @@ interface Map3DProps {
   mask: Uint8Array | null
   /** Planned stations: position, orbit ring and Monte Carlo positions. */
   stations: StationOverlay[]
-  /** Extra stations grouped by output color (x, y interleaved, au), for very large plans. */
+  /** Extra stations grouped by station color (x, y interleaved, au), for very large plans. */
   stationDots?: { points: Float32Array; color: string }[] | null
+  /** Upstream station connections (x1, y1, x2, y2) for hierarchy mode. */
+  hierarchyLinks?: Float32Array | null
   /** Per-asteroid RGB override (e.g. coloured by station); null for composition colours. */
   colors: Uint8Array | null
   /** Pulse the station markers (a new plan just arrived). */
@@ -531,6 +580,7 @@ export function Map3D({
   mask,
   stations,
   stationDots = null,
+  hierarchyLinks = null,
   colors: colorOverride,
   freshStations,
   onStationHover,
@@ -629,6 +679,7 @@ export function Map3D({
           <>
             <AsteroidPoints positions={positions} colors={colors} mask={mask} />
             <MonteCarloCloud stations={stations} mode={mode} />
+            <StationLinks stations={stations} mode={mode} hierarchyLinks={hierarchyLinks} />
             {stationDots?.map(({ points, color }) => (
               <StationDots key={color} xy={points} mode={mode} color={color} />
             ))}

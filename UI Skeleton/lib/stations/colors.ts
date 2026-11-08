@@ -29,6 +29,10 @@ export function hexToRgb01(hex: string): [number, number, number] {
 export interface StationOverlay {
   label: string
   color: string
+  /** Higher-level production station markers use diamonds. */
+  shape?: 'circle' | 'diamond'
+  /** Flat pairs of endpoint coordinates (x1, y1, x2, y2), drawn when this station is focused. */
+  links?: Float32Array
   /** Semi-major axis of the station's orbit, au (drawn as a ring in the ecliptic). */
   a: number
   /** Where the station is at the dataset epoch: heliocentric ecliptic au, on its ring. */

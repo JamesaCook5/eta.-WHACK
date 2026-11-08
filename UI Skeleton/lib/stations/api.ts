@@ -97,6 +97,8 @@ export interface HierarchyStation {
   tier: number; process: string | null; material: string;
   a: number; e: number; i: number; longitude: number; members: number; share: number;
   output: Record<string, number>; inputs?: Record<string, number>;
+  /** Indices of the upstream stations supplying this station's inputs. */
+  sourceStations: number[];
 }
 export interface HierarchyResult { product: string; productLabel: string; stations: HierarchyStation[]; asteroidAssignment: Uint8Array; ms: number; tripYears: number }
 

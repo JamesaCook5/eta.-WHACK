@@ -41,6 +41,7 @@ export function StationPin({ station, fresh, onHover, onClick }: StationPinProps
   }
   const pulse = station.active || (fresh && !station.compact)
   const showLabel = !station.compact || station.active || hover
+  const diamond = station.shape === 'diamond'
 
   return (
     <div className={cn('relative transition-opacity', station.dim && 'opacity-45')}>
@@ -65,13 +66,16 @@ export function StationPin({ station, fresh, onHover, onClick }: StationPinProps
                 backgroundColor: station.color,
                 opacity: 0.55,
                 animation: station.active ? undefined : 'ping 1s cubic-bezier(0, 0, 0.2, 1) 3',
+                clipPath: diamond ? 'polygon(50% 0, 100% 50%, 50% 100%, 0 50%)' : undefined,
               }}
             />
           )}
           <span
             aria-hidden="true"
             className={cn(
-              'relative rounded-full border border-white/70 shadow-[0_0_0_2px_rgba(0,0,0,0.5)] transition-transform group-focus-visible:ring-2 group-focus-visible:ring-white',
+              diamond
+                ? 'relative rotate-45 rounded-[2px] border border-white/70 shadow-[0_0_0_2px_rgba(0,0,0,0.5)] transition-transform group-focus-visible:ring-2 group-focus-visible:ring-white'
+                : 'relative rounded-full border border-white/70 shadow-[0_0_0_2px_rgba(0,0,0,0.5)] transition-transform group-focus-visible:ring-2 group-focus-visible:ring-white',
               station.compact
                 ? station.active
                   ? 'size-[14px]'

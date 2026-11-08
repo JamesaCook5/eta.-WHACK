@@ -38,8 +38,10 @@ interface MapCanvasProps {
   mask: Uint8Array | null
   /** Planned stations: position, orbit ring and Monte Carlo positions. */
   stations: StationOverlay[]
-  /** Extra stations grouped by output color (x, y interleaved, au), for very large plans. */
+  /** Extra stations grouped by station color (x, y interleaved, au), for very large plans. */
   stationDots?: { points: Float32Array; color: string }[] | null
+  /** Upstream station connections (x1, y1, x2, y2) for hierarchy mode. */
+  hierarchyLinks?: Float32Array | null
   /** Per-asteroid RGB override (e.g. coloured by station); null for composition colours. */
   colors: Uint8Array | null
   /** Pulse the station markers (a new plan just arrived). */
@@ -60,6 +62,7 @@ export function MapCanvas({
   colors,
   freshStations,
   stationDots = null,
+  hierarchyLinks = null,
   onStationHover,
   onStationClick,
   hovered,
@@ -210,11 +213,21 @@ export function MapCanvas({
         color: [...hexToRgb01(color), 0.9] as OrbitLine['color'],
         dotSize: 3.5,
       })),
+      ...(hierarchyLinks && hierarchyLinks.length > 0
+        ? [{ points: hierarchyLinks, color: [0.56, 0.65, 0.77, 0.24] as OrbitLine['color'], segments: true }]
+        : []),
+      ...stations
+        .filter((s) => s.active && s.links && s.links.length > 0)
+        .map((s) => ({
+          points: s.links!,
+          color: [0.68, 0.78, 0.94, 0.62] as OrbitLine['color'],
+          segments: true,
+        })),
     ]
     rendererRef.current?.setOrbits(lines)
     requestDraw()
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [stations, stationDots])
+  }, [stations, stationDots, hierarchyLinks])
 
   // When a new plan arrives, zoom out if any station or its reach zone is off screen.
   useEffect(() => {

@@ -82,7 +82,7 @@ class HierarchyRequest(BaseModel):
 
 
 #: Station fields the map uses.
-_SLIM_STATION_KEYS = ("tier", "process", "material", "a", "e", "i", "longitude", "members", "share", "dvMedian", "inputs", "output")
+_SLIM_STATION_KEYS = ("tier", "process", "material", "a", "e", "i", "longitude", "members", "share", "dvMedian", "inputs", "output", "sourceStations")
 
 
 def _slim_hierarchy(result: dict) -> dict:
