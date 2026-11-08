@@ -200,7 +200,7 @@ export function MapSection() {
       const lon = (station.longitude * Math.PI) / 180
       const x = station.a * Math.cos(lon)
       const y = station.a * Math.sin(lon)
-      for (const sourceIndex of station.sourceStations) {
+      for (const sourceIndex of station.sourceStations ?? []) {
         const source = hierarchyResult.stations[sourceIndex]
         if (!source) continue
         const sourceLon = (source.longitude * Math.PI) / 180
@@ -231,7 +231,7 @@ export function MapSection() {
         const mining = s.tier === 0 && !s.process
         const lon = (s.longitude * Math.PI) / 180
         const linkCoordinates: number[] = []
-        for (const sourceIndex of s.sourceStations) {
+        for (const sourceIndex of s.sourceStations ?? []) {
           const source = hierarchyResult.stations[sourceIndex]
           if (!source) continue
           const sourceLon = (source.longitude * Math.PI) / 180
