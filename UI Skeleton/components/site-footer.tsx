@@ -1,3 +1,4 @@
+import Link from 'next/link'
 import { Wordmark } from './wordmark'
 
 export function SiteFooter() {
@@ -8,13 +9,13 @@ export function SiteFooter() {
         <nav aria-label="Footer">
           <ul className="flex flex-wrap gap-6 text-sm text-muted-foreground">
             <li>
-              <a href="#about" className="hover:text-white">About</a>
+              <a href="/#top" className="hover:text-white">Home</a>
             </li>
             <li>
-              <a href="#map" className="hover:text-white">Map</a>
+              <a href="/#map" className="hover:text-white">Map</a>
             </li>
             <li>
-              <a href="#method" className="hover:text-white">Method</a>
+              <Link href="/methodology" scroll={false} className="hover:text-white">Methodology</Link>
             </li>
             <li>
               <a

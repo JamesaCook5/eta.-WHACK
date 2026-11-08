@@ -1,22 +1,24 @@
+import Link from 'next/link'
+
 const CARDS = [
   {
     title: 'Resource mapping',
-    body: 'Each product in the manufacturing DAG lists the feedstocks it can draw on. Those map to elements (iron, titanium, phosphorus, water…), and each asteroid gets a grade for every element from its taxonomic class: mineral make-up from the chemical DAG times each mineral’s typical yield. X-type classes are split by albedo. Inputs with no asteroid route are listed as imported from Earth.',
+    body: 'We start from the product. Each one in the manufacturing DAG lists the feedstocks it can use, and those break down into elements such as iron, titanium, phosphorus and water. Every asteroid then gets a grade for each element based on its class: the minerals the chemical DAG expects it to contain, multiplied by how much of that element each mineral typically gives up. X-types are split by albedo, and anything with no asteroid source is marked as imported from Earth.',
     file: 'tools/build_product_supply_data.py → lib/stations/product-supply.ts',
   },
   {
     title: 'Placement',
-    body: 'Each station has an orbit and a position along it. The cost of reaching an asteroid is the cheapest way there: the Δv to match its orbit’s size, shape and tilt, plus a phasing manoeuvre to catch up with it along the orbit within the chosen trip time (≈ ⅔ × arc length ÷ trip time). Reach converts that Δv to thrust time at a fixed 0.01 m/s². The optimizer scores supply inside that reach, refines station orbits and positions with gradients, and tries relocations. Asteroid positions are a snapshot; launch windows and propulsion limits are not modelled.',
+    body: 'Each station sits on an orbit, at a particular point along it. To judge how hard an asteroid is to reach, we take the cheapest option: the Δv needed to match its orbit’s size, shape and tilt, plus a phasing burn to catch up with it within the chosen trip time (roughly ⅔ × arc length ÷ trip time). That Δv becomes thrust time at a steady 0.01 m/s², which sets the station’s reach. The optimiser then scores the supply inside that reach, nudges orbits and positions with gradients, and tries moving stations elsewhere. Asteroid positions are a single snapshot, and launch windows and engine limits are not modelled.',
     file: 'lib/stations/optimise.ts',
   },
   {
     title: 'Output',
-    body: 'A station’s output is limited by its scarcest input: for each input it receives a share of the filtered supply, and output follows the smallest share. Supply grows with body size up to 100 km. The DAG gives no quantities yet, so every input counts equally and there is no cost figure.',
+    body: 'A station can only make as much as its scarcest input allows. Each input gets a share of the available supply, and output follows whichever share is smallest. Supply grows with asteroid size up to 100 km. The DAG has no quantities yet, so every input counts equally and there is no cost figure.',
     file: 'lib/stations/optimise.ts',
   },
   {
     title: 'Networks',
-    body: 'Stations making the same product split any asteroid they both reach, so the optimiser spreads them apart rather than stacking them on the richest spot. Stations for different products, and transport between stations, are not modelled yet.',
+    body: 'When two stations make the same product, they split any asteroid both can reach, so the optimiser spreads them out rather than piling them onto the richest spot. Stations making different products, and shipping between stations, are not modelled yet.',
     file: null,
   },
 ]
@@ -28,10 +30,15 @@ export function Method() {
         <h2 id="method-title" className="font-display text-3xl font-medium tracking-tight sm:text-4xl">
           Method
         </h2>
-        <p className="mt-4 max-w-2xl leading-relaxed text-white/80">
-          Station placement runs on the DAGs and the asteroid data; cost and routing models are still to
-          come. This is how the explorer currently works.
-        </p>
+        <div className="mt-4 flex flex-col gap-6 sm:flex-row sm:items-end sm:justify-between">
+          <p className="max-w-2xl leading-relaxed text-white/80">
+            Station placement currently runs on the process DAGs and the asteroid catalogue. Costs and
+            routing are not modelled yet, so treat this as a first pass. Here is how it works today.
+          </p>
+          <Link href="/methodology" scroll={false} className="btn glass btn-glass shrink-0 gap-2 self-start sm:self-auto">
+            Full methodology <span aria-hidden="true">→</span>
+          </Link>
+        </div>
         <ul className="mt-10 grid gap-4 sm:grid-cols-2">
           {CARDS.map((card) => (
             <li key={card.title} className="glass flex flex-col gap-3 rounded-md p-6 sm:p-8">
