@@ -12,7 +12,7 @@ interface SegmentedProps<T extends string> {
 export function Segmented<T extends string>({ label, options, value, onChange }: SegmentedProps<T>) {
   return (
     <div className="flex flex-col gap-2">
-      <span className="text-sm text-white/80">{label}</span>
+      <span className="text-sm text-white">{label}</span>
       <div role="radiogroup" aria-label={label} className="flex flex-wrap gap-1 rounded-md bg-white/5 p-1">
         {options.map((option) => {
           const active = option.id === value
@@ -25,7 +25,7 @@ export function Segmented<T extends string>({ label, options, value, onChange }:
               onClick={() => onChange(option.id)}
               className={cn(
                 'h-8 flex-1 rounded-md px-2 text-xs whitespace-nowrap transition-colors',
-                active ? 'bg-white text-[#0e0e0e]' : 'text-white/75 hover:bg-white/10 hover:text-white',
+                active ? 'bg-white text-[#0e0e0e]' : 'text-white hover:bg-white/10 hover:text-white',
               )}
             >
               {option.label}

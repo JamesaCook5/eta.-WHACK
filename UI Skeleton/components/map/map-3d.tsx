@@ -597,7 +597,7 @@ export function Map3D({
       className="relative h-full w-full overflow-hidden rounded-md bg-[#070707] focus-visible:outline-offset-[-2px]"
       tabIndex={0}
       role="img"
-      aria-label="3D map of the inner solar system: the Sun, the orbits of Earth and Mars, and asteroids in their ecliptic positions. Drag to rotate, right-drag or two fingers to pan, scroll or pinch to zoom, click to select and centre on an asteroid. Plus and minus zoom, 0 resets the view, Escape clears the selection."
+      aria-label="3D map of the inner solar system: the Sun, the asteroids and the orbits of Earth and Mars. Drag to rotate, right-drag or two fingers to pan, scroll or pinch to zoom, click to select and centre on an asteroid. Plus and minus zoom, 0 resets the view, Escape clears the selection."
       onKeyDown={onKeyDown}
     >
       <Canvas
@@ -627,7 +627,7 @@ export function Map3D({
 
       {tooltipLabel && tooltip && (
         <div
-          className="pointer-events-none absolute z-10 rounded-md bg-[#1b1b1b] px-2 py-1 font-mono text-xs whitespace-nowrap text-white"
+          className="pointer-events-none absolute z-10 rounded-md bg-[#1b1b1b] px-2 py-1 text-xs whitespace-nowrap text-white"
           style={{ left: tooltip.x + 12, top: tooltip.y + 12 }}
         >
           {tooltipLabel}
@@ -636,14 +636,11 @@ export function Map3D({
 
       {emptyMessage && (
         <div className="pointer-events-none absolute inset-0 flex items-center justify-center p-8">
-          <p className="max-w-sm text-center text-sm leading-relaxed text-white/75">{emptyMessage}</p>
+          <p className="max-w-sm text-center text-sm leading-relaxed text-white">{emptyMessage}</p>
         </div>
       )}
 
-      <p className="pointer-events-none absolute top-3 left-3 max-w-[calc(100%-12rem)] truncate font-mono text-[11px] text-white/55">
-        Sun-centred · ecliptic · {mode === 'compressed' ? 'distance shown as √r' : 'true distance (au)'}
-      </p>
-      <StationKey stations={stations} className="top-11 max-w-[calc(100%-1.5rem)] sm:top-8 sm:max-w-[calc(100%-12rem)]" />
+      <StationKey stations={stations} className="top-11 max-w-[calc(100%-1.5rem)] sm:top-3 sm:max-w-[calc(100%-12rem)]" />
       {stations.map((s, k) => (
         <div
           key={s.label}
@@ -670,8 +667,8 @@ export function Map3D({
             aria-pressed={mode === m}
             onClick={() => setMode(m)}
             className={cn(
-              'h-7 rounded-md px-2.5 font-mono text-[11px] transition-colors',
-              mode === m ? 'bg-white text-[#0e0e0e]' : 'text-white/75 hover:bg-white/10 hover:text-white',
+              'h-7 rounded-md px-2.5 text-[11px] transition-colors',
+              mode === m ? 'bg-white text-[#0e0e0e]' : 'text-white hover:bg-white/10 hover:text-white',
             )}
           >
             {m === 'compressed' ? 'Compressed' : 'Linear'}
@@ -690,7 +687,7 @@ export function Map3D({
             type="button"
             aria-label={b.aria}
             onClick={b.run}
-            className="h-8 min-w-8 rounded-md bg-white/10 px-2 font-mono text-xs text-white transition-colors hover:bg-white/18 active:bg-white/8"
+            className="h-8 min-w-8 rounded-md bg-white/10 px-2 text-xs text-white transition-colors hover:bg-white/18 active:bg-white/8"
           >
             {b.label}
           </button>

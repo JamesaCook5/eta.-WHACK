@@ -27,12 +27,12 @@ const CARDS: Card[] = [
   },
   {
     label: 'Silicates',
-    body: 'Stony asteroids are mostly rock: silicate minerals like olivine and pyroxene. Piled around a habitat it blocks radiation, melted down it gives glass and fibre, and refined further it yields silicon for solar cells.',
+    body: 'Stony asteroids are mostly rock: silicate minerals like olivine and pyroxene. Piled around a habitat it blocks radiation. Melted down it gives glass and fibre, and refined further it yields silicon for solar cells.',
     className: 'lg:col-span-2',
   },
   {
     label: 'Carbon and organics',
-    body: 'Carbonaceous asteroids carry a few percent of carbon-rich organic matter. That is the starting point for plastics and polymers, and the carbon that turns asteroid iron into steel.',
+    body: 'Carbonaceous asteroids carry a few percent of carbon-rich organic matter. That is the starting point for plastics and polymers. It also supplies the carbon that turns asteroid iron into steel.',
     className: 'lg:col-span-2',
   },
   {
@@ -42,20 +42,20 @@ const CARDS: Card[] = [
   },
   {
     label: 'Sulfur and phosphorus',
-    body: 'Sulfide and phosphate minerals are easy to overlook, but sulfur makes the acids used to pull metals out of ore, and phosphorus is fertiliser for growing food far from home.',
+    body: 'Sulfide and phosphate minerals are easy to overlook. Sulfur makes the acids used to pull metals out of ore and phosphorus is fertiliser for growing food far from home.',
     className: 'lg:col-span-2',
   },
 ]
 
 export function About() {
   return (
-    <section id="about" aria-labelledby="about-title" className="px-4 py-24">
+    <section id="about" aria-labelledby="about-title" className="px-4 pt-24 pb-44">
       <ul className="mx-auto grid max-w-6xl gap-4 sm:grid-cols-2 lg:grid-cols-6">
         <li className="glass flex flex-col rounded-md p-8 sm:col-span-2 sm:p-10 lg:col-span-4">
           <h2 id="about-title" className="font-display text-3xl font-medium tracking-tight sm:text-4xl">
             In-situ resource utilisation
           </h2>
-          <p className="mt-6 max-w-2xl text-lg leading-relaxed text-white/80">
+          <p className="mt-6 max-w-2xl text-lg leading-relaxed text-white">
             Every kilogram launched from Earth is expensive. ISRU is the idea of making what a mission
             needs (propellant, water, oxygen, building material) from what is already out there,
             rather than hauling all of it up from the ground.
@@ -65,14 +65,14 @@ export function About() {
         {CARDS.map((card) => (
           <li key={card.label} className={cn('glass flex flex-col gap-3 rounded-md p-6 sm:p-8', card.className)}>
             <p className="font-display text-lg font-medium">{card.label}</p>
-            <p className="leading-relaxed text-white/75">{card.body}</p>
+            <p className="leading-relaxed text-white">{card.body}</p>
           </li>
         ))}
 
         <li className="glass flex flex-col gap-6 rounded-md p-6 sm:col-span-2 sm:flex-row sm:items-center sm:justify-between sm:p-8 lg:col-span-6">
           <div className="flex max-w-2xl flex-col gap-3">
             <p className="font-display text-lg font-medium">Choosing a site</p>
-            <p className="leading-relaxed text-white/75">
+            <p className="leading-relaxed text-white">
               A station only makes sense where the asteroids nearby have the right material and
               building there saves more than it costs. eta. weighs what each asteroid is made of
               against where it sits, and ranks the best places to put one.

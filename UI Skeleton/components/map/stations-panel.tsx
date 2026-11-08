@@ -8,7 +8,6 @@ import type { ProductEntry, ProductSupplyModel } from '@/lib/stations/product-su
 import type { PlannedStation, PlanResult, Range } from '@/lib/stations/api'
 import type { PlanState } from '@/lib/stations/use-station-plan'
 import { stationColor } from '@/lib/stations/colors'
-import { ASSUMED_ACCELERATION_M_S2 } from '@/lib/stations/settings'
 
 const SUPERSCRIPT = '⁰¹²³⁴⁵⁶⁷⁸⁹'
 const sup = (n: number) =>
@@ -32,9 +31,6 @@ export function formatTonnes(t: number) {
 }
 
 const pct = (v: number) => (v >= 0.1 ? `${(v * 100).toFixed(1)}%` : v >= 0.001 ? `${(v * 100).toFixed(2)}%` : '<0.1%')
-const deg = (v: number) => `${(((v % 360) + 360) % 360).toFixed(0)}°`
-/** Hours of thrust to deliver Δv (km/s) at the planner's assumed acceleration. */
-const thrustHours = (dvKmS: number) => (dvKmS * 1000) / ASSUMED_ACCELERATION_M_S2 / 3600
 
 interface StationsPanelProps {
   dataset: AsteroidDataset | null
@@ -71,59 +67,50 @@ export function StationsPanel({
   onHover,
 }: StationsPanelProps) {
   const result = stale ? null : plan.result
-  const busy = plan.status === 'clustering' || plan.status === 'sampling'
   // The product's asteroid-sourced inputs in the filtered set, as the planner counted them.
   const elements = result?.inputs ?? []
   const missing = elements.filter((el) => el.carriers === 0)
-  const scarcest = elements.length ? elements.reduce((lo, el) => (el.tonnes < lo.tonnes ? el : lo), elements[0]) : null
 
   return (
     <section aria-labelledby="stations-label" className="glass flex min-h-0 flex-col rounded-md">
       <div className="flex items-center justify-between gap-3 px-5 pt-5 pb-3">
-        <p id="stations-label" className="text-xs font-medium tracking-wider text-muted-foreground uppercase">
-          Station plan
+        <p id="stations-label" className="text-sm font-medium text-white">
+          Where the stations go
         </p>
-        <span className="font-mono text-xs text-muted-foreground tabular-nums" aria-live="polite">
+        <span className="text-xs text-white tabular-nums" aria-live="polite">
           {plan.status === 'clustering' ? (
-            <Busy>Clustering…</Busy>
+            <Busy>Placing stations</Busy>
           ) : plan.status === 'sampling' ? (
-            <Busy>Monte Carlo · {plan.draws.toLocaleString()} draws</Busy>
+            <Busy>Testing {plan.draws.toLocaleString()} compositions</Busy>
           ) : plan.status === 'error' ? (
-            'Failed'
-          ) : result ? (
-            `${(result.ms / 1000).toFixed(1)} s`
+            'Something went wrong'
           ) : null}
         </span>
       </div>
 
       <div className="flex min-h-0 flex-col gap-4 overflow-y-auto px-5 pb-5">
         {!dataset || !model ? (
-          <p className="text-sm text-muted-foreground">Loading asteroid and product data…</p>
+          <p className="text-sm text-white">Loading…</p>
         ) : !product ? (
-          <p className="text-sm text-muted-foreground">Pick a product to plan stations for it.</p>
+          <p className="text-sm text-white">Pick a product on the left to place stations for it.</p>
         ) : (
           <>
             <div className="flex flex-col gap-2">
               <p className="text-sm text-white">{product.label}</p>
               {elements.length > 0 && (
                 <div className="flex flex-col gap-1.5">
-                  <p className="text-[11px] text-muted-foreground">Asteroid-sourced inputs (from the DAG)</p>
+                  <p className="text-xs text-white">What it needs from asteroids</p>
                   <ul className="flex flex-wrap gap-1">
                     {elements.map((el) => (
                       <li
                         key={el.id}
-                        title={`${el.carriers.toLocaleString()} bodies in the filtered set · ${formatTonnes(el.tonnes)}`}
+                        title={`Found in ${el.carriers.toLocaleString()} asteroids, about ${formatTonnes(el.tonnes)} in total`}
                         className={cn(
-                          'inline-flex h-6 items-center gap-1 rounded-md px-1.5 font-mono text-[11px]',
-                          el.carriers === 0
-                            ? 'bg-red-500/20 text-red-200'
-                            : el === scarcest
-                              ? 'bg-signal/20 text-signal'
-                              : 'bg-white/6 text-white/80',
+                          'inline-flex h-6 items-center gap-1 rounded-md px-1.5 text-[11px]',
+                          el.carriers === 0 ? 'bg-red-500/20 text-red-200' : 'bg-white/6 text-white',
                         )}
                       >
                         {el.label}
-                        {el === scarcest && el.carriers > 0 && <span className="text-[10px] opacity-80">· scarcest</span>}
                       </li>
                     ))}
                   </ul>
@@ -133,19 +120,19 @@ export function StationsPanel({
             </div>
 
             {product.elements.length === 0 ? (
-              <p className="text-sm leading-relaxed text-white/75">
-                Every input to this product is imported from Earth in the DAG, so there is nothing to place near
-                asteroids.
+              <p className="text-sm leading-relaxed text-white">
+                Everything this product needs still has to come from Earth, so there is nowhere useful to put a station
+                yet.
               </p>
             ) : missing.length > 0 ? (
-              <p className="text-sm leading-relaxed text-white/75">
-                No asteroid in the filtered set carries {missing.map((m) => m.label.toLowerCase()).join(', ')}. Widen the
-                filters to plan stations.
+              <p className="text-sm leading-relaxed text-white">
+                None of the asteroids you have selected contain {missing.map((m) => m.label.toLowerCase()).join(' or ')}.
+                Loosen the filters to place stations.
               </p>
             ) : plan.status === 'error' && !result ? (
               <PlannerError offline={plan.offline} error={plan.error} onRetry={plan.retry} />
             ) : !result ? (
-              <p className="text-sm text-muted-foreground">Clustering asteroids…</p>
+              <p className="text-sm text-white">Placing stations…</p>
             ) : (
               <>
                 <ol className={cn('flex flex-col gap-2 transition-opacity', plan.status === 'clustering' && 'opacity-50')}>
@@ -168,15 +155,6 @@ export function StationsPanel({
                   ))}
                 </ol>
                 {plan.status === 'error' && <PlannerError offline={plan.offline} error={plan.error} onRetry={plan.retry} />}
-                <p className="font-mono text-[11px] leading-relaxed text-muted-foreground">
-                  Python planner · weighted k-means over every filtered asteroid (weight = tonnes of the inputs; best of {result.restarts}{' '}
-                  k-means++ starts) · trip time {result.tripYears} yr ·{' '}
-                  {result.draws > 0
-                    ? `Monte Carlo over class compositions, ${result.draws} draws; ranges are 5th–95th percentile`
-                    : busy
-                      ? 'Monte Carlo running…'
-                      : 'no Monte Carlo'}
-                </p>
               </>
             )}
           </>
@@ -191,14 +169,14 @@ function PlannerError({ offline, error, onRetry }: { offline: boolean; error: st
     <div className="flex flex-col items-start gap-1.5 rounded-md bg-red-500/10 p-3 text-sm text-red-100">
       {offline ? (
         <>
-          <p>The station planner (Python) isn't running.</p>
-          <p className="text-xs text-red-100/75">Start it from the repo root:</p>
-          <code className="rounded-sm bg-black/40 px-2 py-1 font-mono text-[11px] text-white/85">
+          <p>The station planner isn't running.</p>
+          <p className="text-xs text-red-100/75">Start it from the project folder:</p>
+          <code className="rounded-sm bg-black/40 px-2 py-1 text-[11px] text-white">
             uvicorn asteroid_industry.api:app --port 8000
           </code>
         </>
       ) : (
-        <p>The planner failed: {error}</p>
+        <p>The planner hit a problem: {error}</p>
       )}
       <button type="button" onClick={onRetry} className="btn glass btn-glass mt-1 h-7 px-3 text-xs">
         Retry
@@ -220,17 +198,17 @@ function ImportedList({ model, product }: { model: ProductSupplyModel; product: 
   if (product.imported.length === 0) return null
   return (
     <details className="group rounded-md bg-white/4 px-2 py-1.5">
-      <summary className="cursor-pointer list-none text-[11px] text-muted-foreground marker:hidden hover:text-white">
+      <summary className="cursor-pointer list-none text-[11px] text-white marker:hidden hover:text-white">
         <span aria-hidden="true" className="mr-1 inline-block transition-transform group-open:rotate-90">
           ›
         </span>
-        {product.imported.length} input{product.imported.length === 1 ? '' : 's'} imported from Earth
+        {product.imported.length} thing{product.imported.length === 1 ? '' : 's'} still shipped from Earth
       </summary>
       <ul className="mt-1.5 flex flex-wrap gap-1">
         {product.imported.map((id) => {
           const ext = model.externals[id]
           return (
-            <li key={id} title={ext?.why} className="rounded-sm bg-white/6 px-1.5 py-0.5 font-mono text-[10px] text-white/70">
+            <li key={id} title={ext?.why} className="rounded-sm bg-white/6 px-1.5 py-0.5 text-[10px] text-white">
               {ext?.label ?? id}
             </li>
           )
@@ -240,9 +218,9 @@ function ImportedList({ model, product }: { model: ProductSupplyModel; product: 
   )
 }
 
-/** "2.85 (2.84–2.87)" when a Monte Carlo range exists. */
+/** "2.85 (2.84 to 2.87)" when a Monte Carlo range exists. */
 function withRange(value: string, r: Range | undefined, fmt: (v: number) => string) {
-  return r ? `${value} (${fmt(r.lo)}–${fmt(r.hi)})` : value
+  return r ? `${value} (${fmt(r.lo)} to ${fmt(r.hi)})` : value
 }
 
 function StationCard({
@@ -312,31 +290,22 @@ function StationCard({
         >
           <span aria-hidden="true" className="size-2.5 rounded-full ring-1 ring-white/60" style={{ backgroundColor: color }} />
           S{k + 1}
-          <span className={cn('text-[10px]', pinned ? 'text-[#0e0e0e]/60' : 'text-white/45')}>{pinned ? 'focused' : 'focus'}</span>
         </button>
-        <span className="px-1.5 font-mono text-[11px] text-white/75 tabular-nums">
-          a {withRange(s.a.toFixed(2), R?.a, (v) => v.toFixed(2))} au · e {s.e.toFixed(2)} · i {s.i.toFixed(1)}°
-        </span>
-        <span className="px-1.5 font-mono text-[11px] text-white/55 tabular-nums">
-          {s.bunching < 0.3
-            ? 'Its asteroids spread all round the orbit'
-            : `Longitude ${withRange(deg(s.longitude), R?.longitude, deg)}`}
+        <span className="px-1.5 text-xs text-white tabular-nums">
+          {withRange(s.a.toFixed(2), R?.a, (v) => v.toFixed(2))} AU from the Sun
         </span>
       </div>
 
       <div className="flex flex-col gap-1">
-        <p className="text-xs text-white/85">
-          {s.members.toLocaleString()} asteroids · {withRange(pct(s.share), R?.share, pct)} of the input tonnage
+        <p className="text-xs text-white">
+          Serves {s.members.toLocaleString()} asteroids holding {withRange(pct(s.share), R?.share, pct)} of the material
         </p>
-        <p className="font-mono text-[11px] text-muted-foreground tabular-nums">
-          Median Δv to its asteroids {s.dvMedian.toFixed(2)} km/s (≈ {Math.round(thrustHours(s.dvMedian))} h of thrust at{' '}
-          {ASSUMED_ACCELERATION_M_S2} m/s²)
-        </p>
+        <p className="text-xs text-white tabular-nums">Typical trip to one of them: {s.dvMedian.toFixed(1)} km/s</p>
       </div>
 
       <div className="flex flex-col gap-1">
-        <p className="text-[11px] text-muted-foreground">
-          Output, in the ratio its asteroids hold it{R ? ' (faint band: range over draws)' : ''}
+        <p className="text-[11px] text-white">
+          What its asteroids hold
         </p>
         <dl className="flex flex-col gap-1">
           {shown.map((row) => {
@@ -344,10 +313,10 @@ function StationCard({
             return (
               <div
                 key={row.id}
-                className="grid grid-cols-[4.75rem_minmax(0,1fr)_3.25rem] items-center gap-2 font-mono text-[11px] tabular-nums"
+                className="grid grid-cols-[4.75rem_minmax(0,1fr)_3.25rem] items-center gap-2 text-[11px] tabular-nums"
                 title={`${formatTonnes(row.v)}${r ? ` (${formatTonnes(r.lo)}–${formatTonnes(r.hi)})` : ''}`}
               >
-                <dt className={cn('flex items-center gap-1 truncate', row.input ? 'text-white' : 'text-white/55')}>
+                <dt className={cn('flex items-center gap-1 truncate', 'text-white')}>
                   {row.input && <span aria-hidden="true" className="size-1 shrink-0 rounded-full bg-white" />}
                   {labels[row.id] ?? row.id}
                 </dt>
@@ -368,17 +337,15 @@ function StationCard({
                     style={{ width: `${(row.v / maxV) * 100}%`, backgroundColor: color }}
                   />
                 </dd>
-                <dd className="text-right text-white/70">{pct(total > 0 ? row.v / total : 0)}</dd>
+                <dd className="text-right text-white">{pct(total > 0 ? row.v / total : 0)}</dd>
               </div>
             )
           })}
         </dl>
-        <p className="font-mono text-[10px] text-white/40">● product input · others are co-products · total {formatTonnes(total)}</p>
       </div>
 
       <div className="flex flex-col gap-1">
-        <p className="text-[11px] text-muted-foreground">Largest asteroids it serves</p>
-        <p className="px-1.5 font-mono text-[10px] text-white/40">body · position vs station · Δv · input tonnes</p>
+        <p className="text-[11px] text-white">Its biggest asteroids</p>
         <ul className="flex flex-col">
           {s.topMembers.slice(0, 5).map((m) => {
             const r = dataset.records[m.index]
@@ -394,17 +361,14 @@ function StationCard({
                   onBlur={() => onHover(-1)}
                   aria-current={active ? 'true' : undefined}
                   className={cn(
-                    'flex w-full items-baseline justify-between gap-2 rounded-sm px-1.5 py-1 text-left font-mono text-[11px] transition-colors',
-                    active ? 'bg-white/12 text-signal' : 'text-white/80 hover:bg-white/8',
+                    'flex w-full items-baseline justify-between gap-2 rounded-sm px-1.5 py-1 text-left text-[11px] transition-colors',
+                    active ? 'bg-white/12 text-signal' : 'text-white hover:bg-white/8',
                   )}
                 >
                   <span className="min-w-0 truncate">
-                    {asteroidLabel(dataset, m.index)} <span className="text-white/45">{r.taxonomy_class}</span>
+                    {asteroidLabel(dataset, m.index)}
                   </span>
-                  <span className="shrink-0 text-white/60 tabular-nums">
-                    {m.offsetDeg >= 0 ? '+' : '−'}
-                    {Math.abs(m.offsetDeg).toFixed(0)}° · {m.dv.toFixed(1)} km/s · {formatTonnes(m.tonnes)}
-                  </span>
+                  <span className="shrink-0 text-white tabular-nums">{formatTonnes(m.tonnes)}</span>
                 </button>
               </li>
             )

@@ -104,11 +104,12 @@ vec3 starLayer(vec2 q, float cells, float threshold, float t) {
 }
 
 // ---------------------------------------------------------------- aurora
-// Curtains repeat down the page, starting just below the hero.
+// Curtains repeat down the page; the first lights the gap between the About
+// section and the map.
 vec3 aurora(vec2 p, float t) {
   const float PERIOD = 2.6;
   float wy = p.y - uScroll * P_AURORA;    // world y, up positive
-  float u = -(wy + 0.78);                 // distance below the first curtain
+  float u = -(wy + 1.02);                 // distance below the first curtain (sits under the About section)
   float n = max(floor((u + PERIOD * 0.5) / PERIOD), 0.0);
   float local = u - n * PERIOD;           // > 0 below the curtain's lower edge
 
@@ -129,7 +130,7 @@ vec3 aurora(vec2 p, float t) {
 
   float upper = clamp(-d * 1.4, 0.0, 1.0);
   vec3 col = mix(AUR_EDGE, AUR_UPPER, upper);
-  return col * (body * rays + rim * r1) * span * 0.36;
+  return col * (body * rays + rim * r1) * span * 0.42;
 }
 
 // ---------------------------------------------------------------- asteroid

@@ -37,8 +37,8 @@ function Chip({
       onClick={onClick}
       title={title}
       className={cn(
-        'inline-flex h-7 items-center gap-1.5 rounded-md px-2 font-mono text-xs transition-colors',
-        active ? 'bg-signal text-[#0e0e0e]' : 'bg-white/6 text-white/80 hover:bg-white/12 hover:text-white',
+        'inline-flex h-7 items-center gap-1.5 rounded-md px-2 text-xs transition-colors',
+        active ? 'bg-white text-[#0e0e0e]' : 'bg-white/6 text-white hover:bg-white/12 hover:text-white',
       )}
       {...rest}
     >
@@ -50,7 +50,7 @@ function Chip({
 
 function SectionLabel({ id, children }: { id: string; children: React.ReactNode }) {
   return (
-    <p id={id} className="text-xs font-medium tracking-wider text-muted-foreground uppercase">
+    <p id={id} className="text-sm font-medium text-white">
       {children}
     </p>
   )
@@ -69,11 +69,11 @@ function ProductPicker({
   onChange: (id: string) => void
 }) {
   if (!products) {
-    return <p className="text-xs text-muted-foreground">Loading products from the DAG…</p>
+    return <p className="text-xs text-white">Loading products…</p>
   }
   return (
     <div className="flex flex-col gap-2">
-      <span id="product-label" className="text-sm text-white/80">
+      <span id="product-label" className="text-sm text-white">
         Product
       </span>
       <div
@@ -86,7 +86,7 @@ function ProductPicker({
           if (items.length === 0) return null
           return (
             <div key={group} className="flex flex-col gap-0.5">
-              <p className="px-1.5 pt-1 pb-0.5 text-[10px] font-medium tracking-wider text-muted-foreground uppercase">
+              <p className="px-1.5 pt-1 pb-0.5 text-[11px] font-medium text-white">
                 {group}
               </p>
               {items.map((p) => {
@@ -98,21 +98,13 @@ function ProductPicker({
                     role="radio"
                     aria-checked={active}
                     onClick={() => onChange(p.id)}
-                    title={`${p.elements.length} asteroid-sourced inputs, ${p.imported.length} imported from Earth`}
+                    title={`${p.elements.length} inputs from asteroids, ${p.imported.length} from Earth`}
                     className={cn(
                       'flex items-baseline justify-between gap-2 rounded-md px-1.5 py-1.5 text-left text-xs transition-colors',
-                      active ? 'bg-white text-[#0e0e0e]' : 'text-white/80 hover:bg-white/10 hover:text-white',
+                      active ? 'bg-white text-[#0e0e0e]' : 'text-white hover:bg-white/10 hover:text-white',
                     )}
                   >
                     <span className="min-w-0 truncate">{p.label}</span>
-                    <span
-                      className={cn(
-                        'shrink-0 font-mono text-[10px] tabular-nums',
-                        active ? 'text-[#0e0e0e]/60' : 'text-white/40',
-                      )}
-                    >
-                      {p.elements.length > 0 ? `${p.elements.length} in` : 'imported'}
-                    </span>
                   </button>
                 )
               })}
@@ -226,24 +218,15 @@ export function ControlsPanel({
             format={(v) => `${v} year${v === 1 ? '' : 's'}`}
             onChange={(v) => setPlan('tripYears', v)}
           />
-          <p className="text-[11px] leading-relaxed text-muted-foreground">
-            Time a tug may take to drift along the orbit to an asteroid ahead of or behind its station. Shorter trips
-            make position along the orbit count more, so each station takes a tighter arc.
-          </p>
         </div>
-        <label className="flex cursor-pointer items-start gap-2.5 text-sm text-white/80">
+        <label className="flex cursor-pointer items-start gap-2.5 text-sm text-white">
           <input
             type="checkbox"
             checked={plan.includeOuter}
             onChange={(e) => setPlan('includeOuter', e.target.checked)}
             className="mt-0.5 size-4 accent-[var(--color-signal,#52cbff)]"
           />
-          <span className="flex flex-col gap-0.5">
-            Include Centaurs and Kuiper belt
-            <span className="text-[11px] leading-relaxed text-muted-foreground">
-              About 20 bodies 6–70 au out. They are so far from the rest that k-means gives them stations of their own.
-            </span>
-          </span>
+          <span>Include Centaurs and the Kuiper belt</span>
         </label>
       </section>
 
@@ -254,15 +237,15 @@ export function ControlsPanel({
             type="button"
             onClick={onResetFilters}
             disabled={disabled}
-            className="text-xs text-muted-foreground hover:text-white disabled:opacity-40"
+            className="text-xs text-white hover:opacity-70 disabled:opacity-40"
           >
             Reset
           </button>
         </div>
 
         <div className="flex flex-col gap-2">
-          <span id="class-label" className="text-sm text-white/80">
-            Taxonomic class
+          <span id="class-label" className="text-sm text-white">
+            Asteroid type
           </span>
           {groups.length > 0 ? (
             <>
@@ -281,7 +264,7 @@ export function ControlsPanel({
                         'inline-flex h-7 items-center gap-1.5 rounded-md px-2 text-xs transition-colors',
                         expanded
                           ? 'bg-white/16 text-white'
-                          : 'bg-white/6 text-white/80 hover:bg-white/12 hover:text-white',
+                          : 'bg-white/6 text-white hover:bg-white/12 hover:text-white',
                       )}
                     >
                       <span aria-hidden="true" className="flex -space-x-0.5">
@@ -297,7 +280,7 @@ export function ControlsPanel({
                       </span>
                       {cat.label}
                       {cat.selected > 0 && (
-                        <span className="rounded-sm bg-signal px-1 font-mono text-[10px] text-[#0e0e0e]">
+                        <span className="rounded-sm bg-white/80 px-1 text-[10px] text-[#0e0e0e]">
                           {cat.selected}
                         </span>
                       )}
@@ -331,37 +314,24 @@ export function ControlsPanel({
                       }
                       title={
                         g.mixed
-                          ? `${g.count.toLocaleString()} ${g.name} asteroids placed in ${open.label} by albedo`
+                          ? `${g.count.toLocaleString()} ${g.name} asteroids placed in ${open.label} by brightness`
                           : `${g.count.toLocaleString()} asteroids`
                       }
                       dot={classColor(g.name, g.category)}
                     >
                       {g.name}
-                      {g.mixed && (
-                        <span aria-hidden="true" className="text-white/45">
-                          *
-                        </span>
-                      )}
                     </Chip>
                   ))}
-                  {open.members.some((g) => g.mixed) && (
-                    <p className="w-full px-1 pt-1 text-[11px] text-muted-foreground">
-                      * Mixed class: only its asteroids whose albedo fits {open.label.toLowerCase()}.
-                    </p>
-                  )}
                 </div>
               )}
             </>
           ) : (
-            <p className="text-xs text-muted-foreground">Available once the dataset loads.</p>
+            <p className="text-xs text-white">Loading…</p>
           )}
-          <p className="text-xs text-muted-foreground">
-            {filters.classes.length === 0 ? 'All classes' : `${filters.classes.length} selected`}
-          </p>
         </div>
 
         <div className="flex flex-col gap-2">
-          <span id="region-label" className="text-sm text-white/80">
+          <span id="region-label" className="text-sm text-white">
             Region
           </span>
           <div role="group" aria-labelledby="region-label" className="flex flex-wrap gap-1">
@@ -386,12 +356,35 @@ export function ControlsPanel({
               )
             })}
           </div>
-          <p className="text-xs text-muted-foreground">
-            {filters.regions.length === 0 ? 'All regions' : `${filters.regions.length} selected`}
-          </p>
         </div>
 
         <RangeField
+<<<<<<< HEAD
+=======
+          id="filter-a"
+          label="Distance from the Sun"
+          range={filters.a}
+          step={0.01}
+          disabled={disabled}
+          format={(v) => `${v.toFixed(2)} AU`}
+          onChange={(value) => onFiltersChange({ ...filters, a: { ...filters.a, value } })}
+        />
+        <RangeField
+          id="filter-d"
+          label="Diameter"
+          range={filters.diameterLog}
+          step={0.01}
+          disabled={disabled}
+          format={formatDiameter}
+          onChange={(value) =>
+            onFiltersChange({
+              ...filters,
+              diameterLog: { ...filters.diameterLog, value },
+            })
+          }
+        />
+        <RangeField
+>>>>>>> 5485ad8ff2e30e76d3723f0faeef9f0c6be1c1a7
           id="filter-i"
           label="Inclination"
           range={filters.inclination}
@@ -426,16 +419,13 @@ function StationCount({ value, onChange }: { value: number; onChange: (n: number
     if (next !== value) onChange(next)
   }
   const stepper =
-    'h-8 w-8 shrink-0 rounded-md font-mono text-sm text-white/75 transition-colors hover:bg-white/10 hover:text-white disabled:opacity-30'
+    'h-8 w-8 shrink-0 rounded-md text-sm text-white transition-colors hover:bg-white/10 hover:text-white disabled:opacity-30'
   return (
     <div className="flex flex-col gap-2">
       <div className="flex items-baseline justify-between gap-2">
-        <label htmlFor="station-count" className="text-sm text-white/80">
+        <label htmlFor="station-count" className="text-sm text-white">
           Stations
         </label>
-        <span className="font-mono text-[11px] text-muted-foreground">
-          {STATION_LIMITS.min}–{STATION_LIMITS.max}
-        </span>
       </div>
       <div className="flex items-center gap-1 rounded-md bg-white/5 p-1">
         <button
@@ -457,7 +447,7 @@ function StationCount({ value, onChange }: { value: number; onChange: (n: number
           onChange={(e) => setDraft(e.target.value)}
           onBlur={commit}
           onKeyDown={(e) => e.key === 'Enter' && commit()}
-          className="h-8 min-w-0 flex-1 rounded-md bg-white/8 text-center font-mono text-sm text-white tabular-nums outline-none focus-visible:ring-1 focus-visible:ring-white/60 [appearance:textfield] [&::-webkit-inner-spin-button]:appearance-none [&::-webkit-outer-spin-button]:appearance-none"
+          className="h-8 min-w-0 flex-1 rounded-md bg-white/8 text-center text-sm text-white tabular-nums outline-none focus-visible:ring-1 focus-visible:ring-white/60 [appearance:textfield] [&::-webkit-inner-spin-button]:appearance-none [&::-webkit-outer-spin-button]:appearance-none"
         />
         <button
           type="button"
@@ -477,8 +467,8 @@ function StationCount({ value, onChange }: { value: number; onChange: (n: number
             aria-pressed={value === n}
             onClick={() => onChange(n)}
             className={cn(
-              'h-7 flex-1 rounded-md font-mono text-[11px] transition-colors',
-              value === n ? 'bg-white text-[#0e0e0e]' : 'bg-white/5 text-white/70 hover:bg-white/10 hover:text-white',
+              'h-7 flex-1 rounded-md text-[11px] transition-colors',
+              value === n ? 'bg-white text-[#0e0e0e]' : 'bg-white/5 text-white hover:bg-white/10 hover:text-white',
             )}
           >
             {n}

@@ -1,19 +1,11 @@
 import type { Metadata } from 'next'
-import { SiteHeader } from '@/components/site-header'
-import { SiteFooter } from '@/components/site-footer'
-import { MethodologyContent } from '@/components/methodology/methodology-content'
+import { ChapterPage } from '@/components/methodology/chapter-page'
 
 export const metadata: Metadata = {
-  title: 'Methodology — eta.',
+  title: 'Methodology | eta.',
   description: 'How eta. models asteroid resources, processing chains and station placement.',
 }
 
 export default function MethodologyPage() {
-  return (
-    <>
-      <SiteHeader current="methodology" />
-      <MethodologyContent />
-      <SiteFooter />
-    </>
-  )
+  return <ChapterPage slug="overview" />
 }

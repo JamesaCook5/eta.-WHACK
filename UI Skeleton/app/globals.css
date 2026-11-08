@@ -112,3 +112,28 @@
     @apply text-white hover:bg-white/12 active:bg-white/8;
   }
 }
+
+/* Methodology chapters: plain long-form reading. */
+.chapter {
+  font-family: var(--font-serif), Georgia, serif;
+  font-size: 1.125rem;
+  line-height: 1.75;
+  color: #fff;
+}
+.chapter > p + p {
+  margin-top: 1.1em;
+}
+.chapter h3 {
+  margin-top: 2.2em;
+  margin-bottom: 0.6em;
+  font-size: 1.35rem;
+  line-height: 1.3;
+  color: #fff;
+}
+.chapter > h3:first-child {
+  margin-top: 0;
+}
+.chapter figure,
+.chapter figcaption {
+  font-family: var(--font-inter), ui-sans-serif, system-ui, sans-serif;
+}

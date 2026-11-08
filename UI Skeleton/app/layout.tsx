@@ -12,7 +12,7 @@ const spaceGrotesk = Space_Grotesk({
 })
 
 export const metadata: Metadata = {
-  title: 'eta. — asteroid resources for deep-space missions',
+  title: 'eta. | Asteroid resources for deep-space missions',
   description:
     'eta. maps the asteroid belt to find where resource stations could supply deep-space missions with material mined in situ.',
   generator: 'v0.app',

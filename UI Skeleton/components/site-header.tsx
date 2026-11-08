@@ -15,10 +15,10 @@ export function SiteHeader({ current }: { current?: 'methodology' }) {
           <Wordmark />
         </Link>
         <nav aria-label="Primary" className="hidden sm:block">
-          <ul className="flex items-center gap-8 text-sm text-muted-foreground">
+          <ul className="flex items-center gap-8 text-sm text-white">
             {LINKS.map((link) => (
               <li key={link.href}>
-                <a href={link.href} className="transition-colors hover:text-white">
+                <a href={link.href} className="transition-opacity hover:opacity-70">
                   {link.label}
                 </a>
               </li>
@@ -29,7 +29,7 @@ export function SiteHeader({ current }: { current?: 'methodology' }) {
                 href="/methodology"
                 scroll={false}
                 aria-current={current === 'methodology' ? 'page' : undefined}
-                className="transition-colors hover:text-white aria-[current=page]:text-white"
+                className="transition-opacity hover:opacity-70 aria-[current=page]:underline aria-[current=page]:underline-offset-8"
               >
                 Methodology
               </Link>

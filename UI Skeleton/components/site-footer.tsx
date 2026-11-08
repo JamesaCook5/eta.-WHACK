@@ -7,7 +7,7 @@ export function SiteFooter() {
       <div className="mx-auto flex max-w-6xl flex-col gap-6 sm:flex-row sm:items-center sm:justify-between">
         <Wordmark className="text-2xl" />
         <nav aria-label="Footer">
-          <ul className="flex flex-wrap gap-6 text-sm text-muted-foreground">
+          <ul className="flex flex-wrap gap-6 text-sm text-white">
             <li>
               <a href="/#top" className="hover:text-white">Home</a>
             </li>
