@@ -32,12 +32,6 @@ import { hexToRgb01, stationColor, type StationOverlay } from '@/lib/stations/co
 const NO_STATIONS: StationOverlay[] = []
 /** Above this many stations, only mining stations and the focused one get map pins. */
 const PIN_LIMIT = 60
-const OUTPUT_PALETTE = [
-  ['#7f1d1d', '#b91c1c', '#ef4444'],
-  ['#854d0e', '#ca8a04', '#facc15'],
-  ['#14532d', '#16a34a', '#4ade80'],
-  ['#1e3a8a', '#2563eb', '#60a5fa'],
-]
 
 /**
  * Full screen for the map and both sidebars. Uses the Fullscreen API where the
@@ -195,16 +189,8 @@ export function MapSection() {
     if (pinnedStation >= 0 && pinnedStation < n) keep.add(pinnedStation)
     return [...keep].sort((x, y) => x - y)
   }, [planSettings.hierarchical, hierarchyResult, miningStations, focusStation, pinnedStation])
-  const outputStationColors = useMemo(() => {
-    if (!hierarchyResult) return []
-    const maxOutput = Math.max(0, ...hierarchyResult.stations.flatMap((s) => Object.values(s.output ?? {})))
-    return hierarchyResult.stations.map((s, k) => {
-      const largestOutput = Math.max(0, ...Object.values(s.output ?? {}))
-      const colorBand = largestOutput > 0 && maxOutput > 0
-        ? Math.min(3, Math.max(0, Math.floor(Math.log10(maxOutput / largestOutput) / 3 + 1e-10)))
-        : 0
-      return OUTPUT_PALETTE[colorBand][k % 3]
-    })
+  const hierarchyStationColors = useMemo(() => {
+    return hierarchyResult?.stations.map((_, k) => stationColor(k)) ?? []
   }, [hierarchyResult])
   const stationDots = useMemo(() => {
     if (!planSettings.hierarchical || !hierarchyResult || hierarchyResult.stations.length <= PIN_LIMIT) return null
@@ -212,14 +198,14 @@ export function MapSection() {
     const pinned = new Set(pinnedIndices ?? [])
     for (const [k, s] of hierarchyResult.stations.entries()) {
       if (pinned.has(k)) continue
-      const color = outputStationColors[k] ?? stationColor(k)
+      const color = hierarchyStationColors[k] ?? stationColor(k)
       const points = groups.get(color) ?? []
       const lon = (s.longitude * Math.PI) / 180
       points.push(s.a * Math.cos(lon), s.a * Math.sin(lon))
       groups.set(color, points)
     }
     return [...groups].map(([color, points]) => ({ color, points: new Float32Array(points) }))
-  }, [planSettings.hierarchical, hierarchyResult, pinnedIndices, outputStationColors])
+  }, [planSettings.hierarchical, hierarchyResult, pinnedIndices, hierarchyStationColors])
   const stationOverlays = useMemo<StationOverlay[]>(() => {
     if (planSettings.hierarchical && hierarchyResult) {
       const indices = pinnedIndices ?? hierarchyResult.stations.map((_, k) => k)
@@ -230,7 +216,7 @@ export function MapSection() {
         const entries = (obj?: Record<string, number>) => Object.entries(obj ?? {}).sort((a, b) => b[1] - a[1]).slice(0, 3).map(([name, amount]) => `${name} ${amount.toPrecision(3)} t`).join(' · ') || 'none'
         return {
           label: `S${k + 1}`,
-          color: outputStationColors[k] ?? stationColor(k),
+          color: hierarchyStationColors[k] ?? stationColor(k),
           a: s.a,
           position: [s.a * Math.cos(lon), s.a * Math.sin(lon), 0] as [number, number, number],
           cloud: null,
@@ -287,7 +273,7 @@ export function MapSection() {
         },
       }
     })
-  }, [planResult, hierarchyResult, planSettings.hierarchical, pinnedIndices, asteroidCounts, outputStationColors, elementLabels, product, focusStation, pinnedStation])
+  }, [planResult, hierarchyResult, planSettings.hierarchical, pinnedIndices, asteroidCounts, hierarchyStationColors, elementLabels, product, focusStation, pinnedStation])
   // Pulse the station pins for a few seconds whenever a new plan arrives.
   const [freshStations, setFreshStations] = useState(false)
   const nominalResult = !planSettings.hierarchical && plan.status === 'sampling' ? plan.result : null
@@ -332,7 +318,7 @@ export function MapSection() {
           out[o] = out[o + 1] = out[o + 2] = 85
           continue
         }
-        const [r, g, b] = hexToRgb01(outputStationColors[k] ?? stationColor(k))
+        const [r, g, b] = hexToRgb01(hierarchyStationColors[k] ?? stationColor(k))
         out[o] = 255 * r
         out[o + 1] = 255 * g
         out[o + 2] = 255 * b
@@ -357,7 +343,7 @@ export function MapSection() {
       out[o + 2] = rgb[k][2] * f
     }
     return out
-  }, [dataset, planResult, focusStation, planSettings.hierarchical, hierarchyResult, miningStations, outputStationColors])
+  }, [dataset, planResult, focusStation, planSettings.hierarchical, hierarchyResult, miningStations, hierarchyStationColors])
   const mapStations = stationOverlays
   // The maps report positions in mapStations; turn them back into station numbers.
   const onMapStationHover = useCallback((i: number) => setHoverStation(i < 0 ? -1 : (pinnedIndices?.[i] ?? i)), [pinnedIndices])
@@ -436,21 +422,6 @@ export function MapSection() {
           </div>
         </div>
 
-        {planSettings.hierarchical && (
-          <div className="mt-2 flex flex-wrap gap-x-3 gap-y-1 font-mono text-[10px] text-white/65" aria-label="Station colors by logarithmic output amount">
-            {[
-              ['#b91c1c', '0–1,000× below max'],
-              ['#ca8a04', '1,000×–1M× below max'],
-              ['#16a34a', '1M×–1B× below max'],
-              ['#2563eb', '>1B× below max'],
-            ].map(([color, label]) => (
-              <span key={label} className="inline-flex items-center gap-1.5">
-                <span aria-hidden="true" className="size-2 rounded-full" style={{ backgroundColor: color }} />
-                {label}
-              </span>
-            ))}
-          </div>
-        )}
         <div
           className={cn(
             'grid gap-4 lg:grid-cols-[17rem_minmax(0,1fr)_20rem]',
@@ -542,7 +513,7 @@ export function MapSection() {
                 pinnedStation={pinnedStation}
                 onHoverStation={setHoverStation}
                 onPinStation={onStationClick}
-                colors={outputStationColors}
+                colors={hierarchyStationColors}
               />
             )}
           </div>

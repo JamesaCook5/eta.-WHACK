@@ -86,7 +86,7 @@ _SLIM_STATION_KEYS = ("tier", "process", "material", "a", "e", "i", "longitude",
 
 
 def _slim_hierarchy(result: dict) -> dict:
-    """Drop bulky map data while keeping the quantities needed for colors and station details."""
+    """Drop bulky map data while keeping the quantities shown in station details."""
     out = {k: v for k, v in result.items() if k not in ("tree", "tiers", "stations")}
     out["stations"] = [
         {k: round(s[k], 5) if isinstance(s[k], float) else s[k] for k in _SLIM_STATION_KEYS if k in s}
