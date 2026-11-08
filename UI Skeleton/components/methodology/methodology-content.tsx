@@ -17,13 +17,142 @@ interface Section {
 
 // Edit titles and add `content` to fill the page in. Order = table of contents.
 const SECTIONS: Section[] = [
-  { id: 'overview', title: 'Overview', placeholder: ['text', 'text'] },
-  { id: 'data', title: 'Data sources', placeholder: ['text', 'table'] },
-  { id: 'resources', title: 'Resource model', placeholder: ['text', 'equation', 'text'] },
-  { id: 'processes', title: 'Process network', placeholder: ['text', 'figure'] },
-  { id: 'placement', title: 'Station placement', placeholder: ['text', 'equation', 'figure'] },
-  { id: 'validation', title: 'Validation', placeholder: ['text', 'table'] },
-  { id: 'limits', title: 'Limitations and next steps', placeholder: ['text'] },
+  {
+    id: 'overview',
+    title: 'Overview',
+    placeholder: [],
+    content: (
+      <div className="flex flex-col gap-4 text-white/80 leading-relaxed">
+        <p>
+          Space exploration depends on materials that are costly to launch from Earth. Asteroids may hold useful
+          resources, but knowing where resources are is only part of the problem: the materials needed for a product may
+          be spread across many bodies. We explore which asteroids to mine and where to place stations that process
+          their resources.
+        </p>
+        <p>
+          The long-term idea is a self-sustaining space industry. A station could produce some of the propellant and
+          metal needed to build another station, allowing a network of mines and processors to grow with less material
+          shipped from Earth.
+        </p>
+      </div>
+    ),
+  },
+  {
+    id: 'data',
+    title: 'Data sources',
+    placeholder: [],
+    content: (
+      <div className="flex flex-col gap-4 text-white/80 leading-relaxed">
+        <p>
+          The asteroid catalogue contains about 65,000 objects from IMCCE’s SsODNet database. Records include orbital
+          information, size estimates and a composition class.
+        </p>
+        <p>
+          Composition estimates draw on meteorite research and the project’s mineral and process data. Public interest
+          in asteroid resources is also growing: examples cited in the project notes include AstroForge’s work on
+          metallic asteroids, TransAstra’s study of capturing a small near-Earth asteroid, and proposals to use space
+          resources in future industry.
+        </p>
+      </div>
+    ),
+  },
+  {
+    id: 'resources',
+    title: 'Resource model',
+    placeholder: [],
+    content: (
+      <div className="flex flex-col gap-4 text-white/80 leading-relaxed">
+        <p>
+          The model maps an asteroid’s composition class to likely minerals, then maps those minerals to recoverable
+          elements such as water, iron, nickel and aluminium. Their estimated grades and the asteroid’s size are used
+          to estimate the material it may contain.
+        </p>
+        <p>
+          Composition is uncertain. Asteroids in the same class use class-level averages, informed largely by remote
+          observations and meteorite research. The estimates are therefore more useful for comparing groups, regions
+          and asteroid types than for predicting the exact contents of an individual asteroid.
+        </p>
+      </div>
+    ),
+  },
+  {
+    id: 'processes',
+    title: 'Process network',
+    placeholder: [],
+    content: (
+      <div className="flex flex-col gap-4 text-white/80 leading-relaxed">
+        <p>
+          The manufacturing process network links ores to raw materials and then to products. A selected product
+          identifies the inputs its production requires, while the network records how those inputs can be made.
+        </p>
+        <p>
+          This makes it possible to ask whether asteroid-sourced materials could support a chain of production. In a
+          bootstrapping scenario, one station produces some of the propellant and metal needed to build the next,
+          helping a space-based industrial network expand over time.
+        </p>
+      </div>
+    ),
+  },
+  {
+    id: 'placement',
+    title: 'Station placement',
+    placeholder: [],
+    content: (
+      <div className="flex flex-col gap-4 text-white/80 leading-relaxed">
+        <p>
+          For a selected product, the planner groups useful asteroids into station service areas. Weighted k-means
+          places each station near the weighted centre of the asteroids assigned to it, so bodies with more of the
+          product’s required materials have more influence on the station’s location.
+        </p>
+        <p>
+          The placement objective considers transport cost and whether ore is refined at the mine or shipped as raw
+          material. This is a planning approximation: the catalogue positions are a snapshot, and distance is used as
+          a stand-in for the effort of reaching and servicing an asteroid.
+        </p>
+      </div>
+    ),
+  },
+  {
+    id: 'validation',
+    title: 'Validation',
+    placeholder: [],
+    content: (
+      <div className="flex flex-col gap-4 text-white/80 leading-relaxed">
+        <p>
+          Mineral make-up varies within asteroid classes, so the planner uses Monte Carlo sampling to explore that
+          uncertainty. It samples plausible class compositions and reruns station placement across many trials.
+        </p>
+        <p>
+          The resulting station ranges summarize the 5th to 95th percentiles of those runs. They show how much the
+          suggested locations can vary under the composition assumptions; they are not guarantees about the actual
+          contents of particular asteroids.
+        </p>
+      </div>
+    ),
+  },
+  {
+    id: 'limits',
+    title: 'Limitations and next steps',
+    placeholder: [],
+    content: (
+      <div className="flex flex-col gap-4 text-white/80 leading-relaxed">
+        <p>
+          The current model is an initial planning tool. Its asteroid sample can be expanded, the process network can
+          be made more detailed, and class-level composition estimates can be improved as better observations become
+          available.
+        </p>
+        <p>
+          Asteroid positions are represented by a snapshot, so the current placement does not model orbital transfer
+          windows. Distance is only a proxy for fuel or travel effort. More realistic planning would add orbital
+          mechanics, delta-v estimates, real mission data and spacecraft engine limits.
+        </p>
+        <p>
+          Extraction rates, station throughput and shipping between stations are also not yet modelled. The resource
+          estimates describe tonnes that may be present, not tonnes that can be mined or processed per year.
+        </p>
+      </div>
+    ),
+  },
 ]
 
 const LINE_WIDTHS = ['w-full', 'w-11/12', 'w-full', 'w-10/12', 'w-9/12']
@@ -113,18 +242,9 @@ export function MethodologyContent() {
         <h1 id="methodology-title" className="mt-6 font-display text-5xl font-medium tracking-tight sm:text-7xl">
           Methodology
         </h1>
-        <div className="mt-8 flex max-w-xl flex-col gap-3">
-          <Skeleton className="h-3 w-full" />
-          <Skeleton className="h-3 w-10/12" />
-          <Skeleton className="h-3 w-7/12" />
-        </div>
         <div className="mt-10 flex flex-wrap items-center gap-3">
           <Link href="/#map" className="btn btn-primary">Back to the map</Link>
           <a href="#overview" className="btn glass btn-glass">Start reading</a>
-          <span className="ml-1 inline-flex items-center gap-2 rounded-full border border-white/10 px-3 py-1 font-mono text-[11px] text-muted-foreground">
-            <span className="size-1.5 rounded-full bg-amber-300/80" aria-hidden="true" />
-            Draft
-          </span>
         </div>
       </section>
 
