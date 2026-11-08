@@ -11,8 +11,6 @@ import { ZoomImage } from './zoom-image'
 const fmt = (n: number, digits = 0) => n.toLocaleString('en-GB', { maximumFractionDigits: digits, minimumFractionDigits: digits })
 
 const net = stats.network
-const sweep = stats.stations.sweep
-const at = (k: number) => sweep.find((r) => r.k === k)!
 const mc = stats.monteCarlo
 const maxDriftLon = Math.max(...mc.drift.map((d) => d.lonDeg))
 const maxDriftA = Math.max(...mc.drift.map((d) => d.aPct))
@@ -89,23 +87,24 @@ function Resources() {
   return (
     <>
       <p>
-        A spectral class tells us roughly what kind of rock an asteroid is. For each of 26 base types we have a typical
+        An asteroid’s taxonomy class comes from the colour of the sunlight it reflects. Different minerals absorb
+        different colours, so the class tells us roughly what kind of rock it is. Dark C-types are rich in carbon and
+        water-bearing clay. S-types are stony silicates. Some X-types are mostly metal.
+      </p>
+      <p>
+        Meteorites let us check this. Many meteorites have been matched to the asteroid class they came from, and their
+        minerals have been measured in the lab. So for each of 26 base classes we can reasonably estimate a typical
         mineral make up. A C-type, for example, is mostly water-bearing clay with some magnetite, sulfides and olivine.
-        Classes that sit between two types are treated as a blend of both.
       </p>
       <p>
         Each mineral yields a known share of each element. Magnetite is mostly iron and oxygen, clays carry water and
-        olivine carries magnesium and silicon. Multiply through and you get kilograms of each element per tonne of rock.
+        olivine carries magnesium and silicon. Multiply through by the size of the asteroid and you get an estimate of
+        how much of each element it holds.
       </p>
       <p>
-        For the amount of rock we use the asteroid’s diameter and a typical density for its class. Anything wider than
-        100 km is counted as if it were 100 km across. Nobody is going to mine all of Ceres, and the giants would
-        otherwise swamp everything else.
-      </p>
-      <p>
-        These are class averages, and most of them carry low or medium confidence. They are good for comparing regions
-        and types of asteroid but not for predicting what is inside one particular rock. That uncertainty is what the{' '}
-        <To slug="monte-carlo">Monte Carlo</To> chapter deals with.
+        These are class averages, so they are good for comparing regions and types of asteroid rather than predicting
+        what is inside one particular rock. That uncertainty is what the <To slug="monte-carlo">Monte Carlo</To> chapter
+        deals with.
       </p>
     </>
   )
@@ -116,8 +115,9 @@ function ProcessNetwork() {
     <>
       <p>
         To make anything you need a recipe, and recipes depend on other recipes. Our process network records them all:
-        which raw materials go into each step, what comes out and what equipment it needs. Pick a product and we can walk
-        backwards through the network to the asteroid ores it ultimately comes from.
+        which raw materials go into each step, what comes out and what equipment it needs. Products range from aluminium
+        and steel for spacecraft to semiconductors and solar panels. Pick one and we can walk backwards through the
+        network to the asteroid ores it ultimately comes from.
       </p>
       <h3>A small piece of it</h3>
       <p>
@@ -153,7 +153,8 @@ function Stations() {
     <>
       <p>
         A station is a processing plant floating in space, parked in an orbit among the asteroids it serves. It isn’t
-        built on an asteroid. Sitting in the middle of its patch means none of its asteroids is too far away.
+        built on an asteroid. Instead it sits at the best point in its patch, pulled towards where the ore it needs is
+        most abundant, so the richest asteroids are the closest.
       </p>
       <p>
         Mining craft bring ore in from the surrounding asteroids, either as raw rock or roughly refined at the mine. The
@@ -163,8 +164,7 @@ function Stations() {
         next station.
       </p>
       <p>
-        On the map each station shows how far it is from the Sun, how many asteroids it serves, what share of the
-        product’s raw material they hold and how hard a typical trip to one of them is.
+        On the map each mining station shows how many asteroids it is connected to and how far it is from the Sun.
       </p>
       <p>
         For now the planner only says where stations should go and what they could draw on. It doesn’t yet size the
@@ -176,10 +176,6 @@ function Stations() {
 }
 
 function Placement() {
-  const one = at(1)
-  const twelve = at(12)
-  const fortyEight = at(48)
-  const max = at(250)
   return (
     <>
       <p>
@@ -194,24 +190,9 @@ function Placement() {
       </p>
       <h3>Why more stations help</h3>
       <p>
-        With a single station every asteroid that holds a semiconductor ingredient, all {fmt(one.perStation)} of them,
-        ships to the same place, and a typical trip costs {fmt(one.dvMedian, 1)} km/s. Spread the work over more stations
-        and each one gets a smaller, tighter patch.
-      </p>
-      <p>
-        Fewer asteroids per station means a patch a station can actually work through. At {fmt(max.k)} stations each
-        one serves about {fmt(max.perStation)} asteroids instead of tens of thousands.
-      </p>
-      <p>
-        Shorter trips mean more throughput. A mining craft with a fixed engine spends less time on each round trip, so
-        the same fleet brings in more ore every year and burns less propellant doing it. Going from one station to{' '}
-        {fmt(max.k)} cuts a typical trip from {fmt(one.dvMedian, 1)} to {fmt(max.dvMedian, 1)} km/s, roughly{' '}
-        {fmt(one.dvMedian / max.dvMedian, 0)} times as many trips for the same craft.
-      </p>
-      <p>
-        The gains shrink as you go. Four times as many stations, from 12 to 48, only takes a typical trip from{' '}
-        {fmt(twelve.dvMedian, 1)} to {fmt(fortyEight.dvMedian, 1)} km/s. Every station has to be built and supplied, so the
-        right number is a trade off rather than as many as possible.
+        With a single station every asteroid ships to the same place. Spread the work over more stations and each one
+        gets a smaller, tighter patch with shorter trips, so the same fleet of mining craft can bring in more ore. The
+        gains shrink as you add more, and every station has to be built and supplied, so the right number is a trade off.
       </p>
     </>
   )
