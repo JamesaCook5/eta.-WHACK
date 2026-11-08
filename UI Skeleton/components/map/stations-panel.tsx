@@ -35,12 +35,31 @@ interface StationsPanelProps {
   plan: PlanState
   /** True when the plan on screen was computed for a different product or filter set. */
   stale: boolean
+  /** Station highlighted on the map (-1 for none). */
+  focusStation: number
+  pinnedStation: number
+  onHoverStation: (k: number) => void
+  onPinStation: (k: number) => void
   selected: number
   onSelect: (index: number) => void
   onHover: (index: number) => void
 }
 
-export function StationsPanel({ dataset, model, product, elements, plan, stale, selected, onSelect, onHover }: StationsPanelProps) {
+export function StationsPanel({
+  dataset,
+  model,
+  product,
+  elements,
+  plan,
+  stale,
+  focusStation,
+  pinnedStation,
+  onHoverStation,
+  onPinStation,
+  selected,
+  onSelect,
+  onHover,
+}: StationsPanelProps) {
   const result = stale ? null : plan.result
   const running = plan.status === 'running'
   const missing = elements.filter((el) => el.carriers === 0)
@@ -128,6 +147,10 @@ export function StationsPanel({ dataset, model, product, elements, plan, stale, 
                       station={s}
                       elements={elements}
                       dataset={dataset}
+                      focus={focusStation === k ? 'on' : focusStation >= 0 ? 'off' : 'none'}
+                      pinned={pinnedStation === k}
+                      onHoverStation={onHoverStation}
+                      onPinStation={onPinStation}
                       selected={selected}
                       onSelect={onSelect}
                       onHover={onHover}
@@ -180,10 +203,18 @@ function StationCard({
   station: s,
   elements,
   dataset,
+  focus,
+  pinned,
+  onHoverStation,
+  onPinStation,
   selected,
   onSelect,
   onHover,
 }: {
+  focus: 'on' | 'off' | 'none'
+  pinned: boolean
+  onHoverStation: (k: number) => void
+  onPinStation: (k: number) => void
   k: number
   station: NonNullable<PlanState['result']>['stations'][number]
   elements: ElementSummary[]
@@ -200,14 +231,34 @@ function StationCard({
   const limiting = elements[s.bottleneck]
 
   return (
-    <li className="flex flex-col gap-3 rounded-md bg-white/4 p-3">
-      <div className="flex items-baseline justify-between gap-2">
-        <span className="flex items-center gap-2 text-sm text-white">
-          <span aria-hidden="true" className="size-2.5 rounded-full" style={{ backgroundColor: color }} />
+    <li
+      onMouseEnter={() => onHoverStation(k)}
+      onMouseLeave={() => onHoverStation(-1)}
+      className={cn(
+        'flex flex-col gap-3 rounded-md bg-white/4 p-3 ring-1 ring-transparent transition-[opacity,box-shadow]',
+        focus === 'off' && 'opacity-60',
+      )}
+      style={focus === 'on' ? { boxShadow: `inset 0 0 0 1.5px ${color}` } : undefined}
+    >
+      <div className="flex flex-col gap-1.5">
+        <button
+          type="button"
+          aria-pressed={pinned}
+          onClick={() => onPinStation(k)}
+          onFocus={() => onHoverStation(k)}
+          onBlur={() => onHoverStation(-1)}
+          title={pinned ? 'Show all stations on the map' : 'Show only this station on the map'}
+          className={cn(
+            'flex w-fit items-center gap-2 rounded-md px-1.5 py-0.5 text-sm transition-colors',
+            pinned ? 'bg-white text-[#0e0e0e]' : 'text-white hover:bg-white/10',
+          )}
+        >
+          <span aria-hidden="true" className="size-2.5 rounded-full ring-1 ring-white/60" style={{ backgroundColor: color }} />
           S{k + 1}
-        </span>
-        <span className="font-mono text-[11px] text-white/75 tabular-nums">
-          a {s.a.toFixed(3)} au · e {s.e.toFixed(3)} · i {s.i.toFixed(1)}°
+          <span className={cn('text-[10px]', pinned ? 'text-[#0e0e0e]/60' : 'text-white/45')}>{pinned ? 'focused' : 'focus'}</span>
+        </button>
+        <span className="px-1.5 font-mono text-[11px] text-white/75 tabular-nums">
+          Orbit a {s.a.toFixed(3)} au · e {s.e.toFixed(3)} · i {s.i.toFixed(1)}°
         </span>
       </div>
 

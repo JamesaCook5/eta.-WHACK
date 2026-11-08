@@ -27,7 +27,7 @@ import { CATEGORY_IDS, categoryLabel } from '@/lib/asteroids/class-colors'
 import { PRODUCT_SUPPLY_URL, loadProductSupply, prepareProblem, type ProductSupplyModel } from '@/lib/stations/product-supply'
 import { DEFAULT_PLAN, type PlanSettings } from '@/lib/stations/settings'
 import { useStationPlan } from '@/lib/stations/use-station-plan'
-import { stationColor, type StationOverlay } from '@/lib/stations/colors'
+import { reachBand, stationColor, type StationOverlay } from '@/lib/stations/colors'
 
 const NO_STATIONS: StationOverlay[] = []
 
@@ -99,6 +99,10 @@ export function MapSection() {
   const [view3d, setView3d] = useState(false)
   const [mineralId, setMineralId] = useState('hydrated_phyllosilicates')
   const [planSettings, setPlanSettings] = useState<PlanSettings>(DEFAULT_PLAN)
+  // Station in focus on the map: hovered card wins over a pinned one.
+  const [hoverStation, setHoverStation] = useState(-1)
+  const [pinnedStation, setPinnedStation] = useState(-1)
+  useEffect(() => setPinnedStation(-1), [planSettings.productId])
   const [hovered, setHovered] = useState(-1)
   const [selected, setSelected] = useState(-1)
   const shellRef = useRef<HTMLDivElement>(null)
@@ -132,18 +136,25 @@ export function MapSection() {
     solvable ? planSettings.productId : null,
   )
   const planStale = plan.key !== planSettings.productId || !solvable
-  const stationOverlays = useMemo<StationOverlay[]>(
-    () =>
-      planStale || !plan.result
-        ? NO_STATIONS
-        : plan.result.stations.map((s, k) => ({
-            label: `S${k + 1}`,
-            color: stationColor(k),
-            a: s.a,
-            suppliers: s.suppliers.map((sp) => sp.index),
-          })),
-    [plan.result, planStale],
-  )
+  const stationCount = !planStale && plan.result ? plan.result.stations.length : 0
+  const focusStation = hoverStation >= 0 ? hoverStation : pinnedStation < stationCount ? pinnedStation : -1
+  const stationOverlays = useMemo<StationOverlay[]>(() => {
+    if (planStale || !plan.result || !dataset) return NO_STATIONS
+    return plan.result.stations.map((s, k) => {
+      // Marker on the ring at the heliocentric longitude of the largest supplier.
+      const top = s.suppliers[0]?.index ?? -1
+      const angle = top >= 0 ? Math.atan2(dataset.positions3[top * 3 + 1], dataset.positions3[top * 3]) : 0
+      return {
+        label: `S${k + 1}`,
+        color: stationColor(k),
+        a: s.a,
+        suppliers: s.suppliers.map((sp) => sp.index),
+        band: reachBand(s.a, planSettings.reachKmS),
+        marker: [s.a * Math.cos(angle), s.a * Math.sin(angle), 0] as [number, number, number],
+        dim: focusStation >= 0 && focusStation !== k,
+      }
+    })
+  }, [plan.result, planStale, dataset, planSettings.reachKmS, focusStation])
   const supplyRows = useMemo(
     () => (dataset && supplyModel ? estimateFeedstock(dataset, supplyModel, mineralId, mask) : []),
     [dataset, supplyModel, mineralId, mask],
@@ -331,6 +342,10 @@ export function MapSection() {
                 elements={prepared?.elements ?? []}
                 plan={plan}
                 stale={planStale}
+                focusStation={focusStation}
+                pinnedStation={pinnedStation}
+                onHoverStation={setHoverStation}
+                onPinStation={(k) => setPinnedStation((cur) => (cur === k ? -1 : k))}
                 selected={selected}
                 onSelect={setSelected}
                 onHover={setHovered}

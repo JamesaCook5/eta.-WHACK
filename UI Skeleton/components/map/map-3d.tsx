@@ -160,12 +160,14 @@ function Markers({
   size,
   ring,
   color = '#ffffff',
+  order = 2,
 }: {
   positions: Float32Array
   indices: number[]
   size: number
   ring: boolean
   color?: string
+  order?: number
 }) {
   const dpr = useThree((s) => s.viewport.dpr)
   const geometry = useMemo(() => {
@@ -195,7 +197,31 @@ function Markers({
   useEffect(() => () => geometry.dispose(), [geometry])
   useEffect(() => () => material.dispose(), [material])
   if (indices.length === 0) return null
-  return <points geometry={geometry} material={material} frustumCulled={false} renderOrder={2} />
+  return <points geometry={geometry} material={material} frustumCulled={false} renderOrder={order} />
+}
+
+/** One marker per station on its ring: white rim around the station colour. */
+function StationMarkers({ stations, mode }: { stations: StationOverlay[]; mode: DistanceScale }) {
+  const points = useMemo(() => {
+    const out = new Float32Array(stations.length * 3)
+    stations.forEach((s, k) => {
+      const [x, y, z] = s.marker
+      const r = Math.hypot(x, y, z)
+      const f = r > 0 ? scaledRadius(r, mode) / r : 0
+      out.set([x * f, y * f, z * f], k * 3)
+    })
+    return out
+  }, [stations, mode])
+  return (
+    <>
+      {stations.map((s, k) => (
+        <group key={s.label}>
+          <Markers positions={points} indices={[k]} size={s.dim ? 12 : 19} ring={false} color="#ffffff" order={s.dim ? 4 : 6} />
+          <Markers positions={points} indices={[k]} size={s.dim ? 8 : 14} ring={false} color={s.color} order={s.dim ? 5 : 7} />
+        </group>
+      ))}
+    </>
+  )
 }
 
 function Orbits({ mode, stations }: { mode: DistanceScale; stations: StationOverlay[] }) {
@@ -225,27 +251,50 @@ function Orbits({ mode, stations }: { mode: DistanceScale; stations: StationOver
           const t = (k / 256) * Math.PI * 2
           pts.push([r * Math.cos(t), r * Math.sin(t), 0])
         }
-        return { key: s.label, color: s.color, pts }
+        return {
+          key: s.label,
+          color: s.color,
+          pts,
+          dim: s.dim,
+          band: [scaledRadius(s.band[0], mode), scaledRadius(s.band[1], mode)] as [number, number],
+        }
       }),
     [stations, mode],
   )
+  const focused = stations.some((s) => s.dim)
   return (
     <>
       {lines.map((pts, i) => (
         <Line key={i} points={pts} color="white" transparent opacity={0.35} lineWidth={1} />
       ))}
       {rings.map((ring) => (
-        <Line
-          key={ring.key}
-          points={ring.pts}
-          color={ring.color}
-          lineWidth={2.5}
-          dashed
-          dashSize={0.05}
-          gapSize={0.03}
-          depthTest={false}
-          renderOrder={3}
-        />
+        <group key={ring.key}>
+          {!ring.dim && (
+            // Reach band: semi-major axes within one reach of the station.
+            <mesh renderOrder={1}>
+              <ringGeometry args={[ring.band[0], ring.band[1], 160]} />
+              <meshBasicMaterial
+                color={ring.color}
+                transparent
+                opacity={focused ? 0.16 : 0.09}
+                side={THREE.DoubleSide}
+                depthWrite={false}
+              />
+            </mesh>
+          )}
+          <Line
+            points={ring.pts}
+            color={ring.color}
+            lineWidth={ring.dim ? 1.5 : 3}
+            transparent
+            opacity={ring.dim ? 0.25 : 1}
+            dashed
+            dashSize={0.05}
+            gapSize={0.03}
+            depthTest={false}
+            renderOrder={3}
+          />
+        </group>
       ))}
     </>
   )
@@ -499,9 +548,12 @@ export function Map3D({ dataset, mask, stations, hovered, selected, onHover, onS
         {positions && colors && (
           <>
             <AsteroidPoints positions={positions} colors={colors} mask={mask} />
-            {stations.map((s) => (
-              <Markers key={s.label} positions={positions} indices={s.suppliers} size={12} ring color={s.color} />
-            ))}
+            {stations
+              .filter((s) => !s.dim)
+              .map((s) => (
+                <Markers key={s.label} positions={positions} indices={s.suppliers} size={15} ring color={s.color} />
+              ))}
+            <StationMarkers stations={stations} mode={mode} />
             <Markers positions={positions} indices={hoverSelected} size={8} ring={false} />
             <Picker positions={positions} onHover={handlers.hover} onSelect={handlers.select} />
           </>

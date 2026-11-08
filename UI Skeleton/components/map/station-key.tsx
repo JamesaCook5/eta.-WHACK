@@ -15,7 +15,7 @@ export function StationKey({ stations, className }: { stations: StationOverlay[]
       )}
     >
       {stations.map((s) => (
-        <li key={s.label} className="flex items-center gap-1.5 tabular-nums">
+        <li key={s.label} className={cn('flex items-center gap-1.5 tabular-nums', s.dim && 'opacity-40')}>
           <span aria-hidden="true" className="size-2 rounded-full ring-1 ring-white/30" style={{ backgroundColor: s.color }} />
           {s.label} · {s.a.toFixed(2)} au
         </li>

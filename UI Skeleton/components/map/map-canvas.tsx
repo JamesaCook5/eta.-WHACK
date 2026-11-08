@@ -2,7 +2,7 @@
 
 import { useEffect, useMemo, useRef, useState } from 'react'
 import type { AsteroidDataset } from '@/lib/asteroids/types'
-import { AsteroidRenderer, type MapView, type OrbitLine, type RingGroup } from '@/lib/asteroids/renderer'
+import { AsteroidRenderer, type MapMarker, type MapView, type OrbitLine, type RingGroup } from '@/lib/asteroids/renderer'
 import { SpatialIndex } from '@/lib/asteroids/spatial-index'
 import { PLANET_ORBITS, orbitPolyline } from '@/lib/mission/bodies'
 import { asteroidLabel } from '@/lib/asteroids/label'
@@ -25,6 +25,17 @@ function circle(a: number, segments: number) {
     const t = (s / segments) * Math.PI * 2
     points[s * 2] = a * Math.cos(t)
     points[s * 2 + 1] = a * Math.sin(t)
+  }
+  return points
+}
+
+/** Annulus between radii r0 and r1 as a triangle strip. */
+function annulus(r0: number, r1: number, segments: number) {
+  const points = new Float32Array((segments + 1) * 4)
+  for (let s = 0; s <= segments; s++) {
+    const t = (s / segments) * Math.PI * 2
+    const c = Math.cos(t), sn = Math.sin(t)
+    points.set([r0 * c, r0 * sn, r1 * c, r1 * sn], s * 4)
   }
   return points
 }
@@ -148,7 +159,7 @@ export function MapCanvas({
   }, [mask, dataset])
 
   const ringGroups = useMemo<RingGroup[]>(
-    () => stations.map((s) => ({ indices: s.suppliers, color: hexToRgb01(s.color) })),
+    () => stations.filter((s) => !s.dim).map((s) => ({ indices: s.suppliers, color: hexToRgb01(s.color) })),
     [stations],
   )
 
@@ -162,14 +173,24 @@ export function MapCanvas({
     const lines: OrbitLine[] = [
       { points: orbitPolyline(PLANET_ORBITS.earth), color: PLANET_ORBIT_COLOR },
       { points: orbitPolyline(PLANET_ORBITS.mars), color: PLANET_ORBIT_COLOR },
-      // Station orbits as dotted rings, so they read apart from the planets' solid lines.
+      // Reach band (a-range within one reach), then the orbit as a dotted ring on top of the asteroids.
+      ...stations
+        .filter((s) => !s.dim)
+        .map((s) => ({
+          points: annulus(s.band[0], s.band[1], 180),
+          color: [...hexToRgb01(s.color), stations.some((o) => o.dim) ? 0.16 : 0.09] as OrbitLine['color'],
+          band: true,
+        })),
       ...stations.map((s) => ({
         points: circle(s.a, Math.round(90 + s.a * 40)),
-        color: [...hexToRgb01(s.color), 0.95] as OrbitLine['color'],
-        dotSize: 3,
+        color: [...hexToRgb01(s.color), s.dim ? 0.22 : 1] as OrbitLine['color'],
+        dotSize: s.dim ? 2.5 : 3.5,
       })),
     ]
     rendererRef.current?.setOrbits(lines)
+    rendererRef.current?.setMarkers(
+      stations.map<MapMarker>((s) => ({ x: s.marker[0], y: s.marker[1], color: hexToRgb01(s.color), alpha: s.dim ? 0.35 : 1 })),
+    )
     requestDraw()
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [stations])
@@ -341,7 +362,7 @@ export function MapCanvas({
       </div>
       {dataset && <MapLegend dataset={dataset} />}
       <p className="pointer-events-none absolute top-3 left-3 max-w-[calc(100%-1.5rem)] truncate font-mono text-[11px] text-white/55">
-        Sun-centred · x–y plane · au{stations.length > 0 && ' · dotted rings: station orbits'}
+        Sun-centred · x–y plane · au{stations.length > 0 && ' · dotted ring: station orbit · band: its reach'}
       </p>
       <StationKey stations={stations} />
     </div>

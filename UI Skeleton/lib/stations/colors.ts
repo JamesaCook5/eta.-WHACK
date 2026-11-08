@@ -18,4 +18,23 @@ export interface StationOverlay {
   a: number
   /** Dataset indices of its main suppliers (ringed in the station's colour). */
   suppliers: number[]
+  /** Semi-major axes (au) within one reach of the station: drawn as a faint band. */
+  band: [number, number]
+  /**
+   * Where the station marker is drawn, heliocentric ecliptic au. The plan fixes
+   * a, e and i but not where along the orbit the station is, so the marker sits
+   * on the ring beside the station's largest supplier.
+   */
+  marker: [number, number, number]
+  /** Another station is in focus: draw this one faded, without its suppliers. */
+  dim: boolean
+}
+
+const V_EARTH_KMS = 29.78
+
+/** a-range within reach λ (km/s) of a circular orbit at a, using the δa/a term of the Δv metric. */
+export function reachBand(a: number, reachKmS: number): [number, number] {
+  const v = V_EARTH_KMS / Math.sqrt(a)
+  const d = reachKmS / (v * Math.sqrt(1.25))
+  return [a * Math.exp(-d), a * Math.exp(d)]
 }
