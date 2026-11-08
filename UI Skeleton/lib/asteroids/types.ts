@@ -28,6 +28,8 @@ export interface AsteroidDataset {
   records: AsteroidRecord[]
   /** Interleaved heliocentric x, y in au (top-down projection). */
   positions: Float32Array
+  /** Interleaved heliocentric ecliptic x, y, z in au (for the 3D view). */
+  positions3: Float32Array
   a: Float32Array
   e: Float32Array
   inclination: Float32Array

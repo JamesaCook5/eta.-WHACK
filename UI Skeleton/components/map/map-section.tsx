@@ -2,6 +2,7 @@
 
 import { useCallback, useDeferredValue, useEffect, useMemo, useRef, useState } from 'react'
 import useSWR from 'swr'
+import dynamic from 'next/dynamic'
 import { cn } from '@/lib/utils'
 import { DATASET_URL, DatasetMissingError, loadDataset } from '@/lib/asteroids/load'
 import { applyFilters, defaultFilters, type AsteroidFilters } from '@/lib/asteroids/filters'
@@ -9,6 +10,16 @@ import { rankCandidates } from '@/lib/mission/rank'
 import type { StationParams } from '@/lib/mission/scoring'
 import { Sheet, SheetContent, SheetTitle, SheetTrigger } from '@/components/ui/sheet'
 import { MapCanvas } from './map-canvas'
+
+// three.js is only downloaded when someone switches to the 3D view.
+const Map3D = dynamic(() => import('./map-3d').then((m) => m.Map3D), {
+  ssr: false,
+  loading: () => (
+    <div className="flex h-full w-full items-center justify-center rounded-md bg-[#070707] text-sm text-white/60">
+      Loading 3D view…
+    </div>
+  ),
+})
 import { ControlsPanel } from './controls-panel'
 import { CandidatesPanel } from './candidates-panel'
 import { SelectedPanel } from './selected-panel'
@@ -83,6 +94,7 @@ export function MapSection() {
   })
   const [filterState, setFilterState] = useState<AsteroidFilters | null>(null)
   const [supplyMode, setSupplyMode] = useState(false)
+  const [view3d, setView3d] = useState(false)
   const [mineralId, setMineralId] = useState('hydrated_phyllosilicates')
   const [station, setStation] = useState<StationParams>(DEFAULT_STATION)
   const [hovered, setHovered] = useState(-1)
@@ -172,23 +184,43 @@ export function MapSection() {
           </div>
         </div>
 
-        <div className="mt-4 inline-flex gap-1 rounded-md bg-white/5 p-1" role="group" aria-label="Map layer">
-          <button
-            type="button"
-            aria-pressed={!supplyMode}
-            onClick={() => setSupplyMode(false)}
-            className={cn('h-8 rounded-md px-3 text-xs transition-colors', !supplyMode ? 'bg-white text-[#0e0e0e]' : 'text-white/75 hover:bg-white/10 hover:text-white')}
-          >
-            Station candidates
-          </button>
-          <button
-            type="button"
-            aria-pressed={supplyMode}
-            onClick={() => setSupplyMode(true)}
-            className={cn('h-8 rounded-md px-3 text-xs transition-colors', supplyMode ? 'bg-white text-[#0e0e0e]' : 'text-white/75 hover:bg-white/10 hover:text-white')}
-          >
-            Material supply
-          </button>
+        <div className="mt-4 flex flex-wrap items-center justify-between gap-2">
+          <div className="inline-flex gap-1 rounded-md bg-white/5 p-1" role="group" aria-label="Map layer">
+            <button
+              type="button"
+              aria-pressed={!supplyMode}
+              onClick={() => setSupplyMode(false)}
+              className={cn('h-8 rounded-md px-3 text-xs transition-colors', !supplyMode ? 'bg-white text-[#0e0e0e]' : 'text-white/75 hover:bg-white/10 hover:text-white')}
+            >
+              Station candidates
+            </button>
+            <button
+              type="button"
+              aria-pressed={supplyMode}
+              onClick={() => setSupplyMode(true)}
+              className={cn('h-8 rounded-md px-3 text-xs transition-colors', supplyMode ? 'bg-white text-[#0e0e0e]' : 'text-white/75 hover:bg-white/10 hover:text-white')}
+            >
+              Material supply
+            </button>
+          </div>
+          <div className="inline-flex gap-1 rounded-md bg-white/5 p-1" role="group" aria-label="Map dimensions">
+            <button
+              type="button"
+              aria-pressed={!view3d}
+              onClick={() => setView3d(false)}
+              className={cn('h-8 rounded-md px-3 text-xs transition-colors', !view3d ? 'bg-white text-[#0e0e0e]' : 'text-white/75 hover:bg-white/10 hover:text-white')}
+            >
+              2D
+            </button>
+            <button
+              type="button"
+              aria-pressed={view3d}
+              onClick={() => setView3d(true)}
+              className={cn('h-8 rounded-md px-3 text-xs transition-colors', view3d ? 'bg-white text-[#0e0e0e]' : 'text-white/75 hover:bg-white/10 hover:text-white')}
+            >
+              3D
+            </button>
+          </div>
         </div>
 
         <div
@@ -214,16 +246,29 @@ export function MapSection() {
               </SheetContent>
             </Sheet>
             <div className={cn(full ? 'h-[75svh] min-h-80 lg:h-auto lg:min-h-0 lg:flex-1' : 'h-[62svh] min-h-80 lg:h-[46rem]')}>
-              <MapCanvas
-                dataset={dataset ?? null}
-                mask={mapMask}
-                candidates={mapHighlights}
-                hovered={hovered}
-                selected={selected}
-                onHover={setHovered}
-                onSelect={setSelected}
-                emptyMessage={emptyMessage}
-              />
+              {view3d ? (
+                <Map3D
+                  dataset={dataset ?? null}
+                  mask={mapMask}
+                  candidates={mapHighlights}
+                  hovered={hovered}
+                  selected={selected}
+                  onHover={setHovered}
+                  onSelect={setSelected}
+                  emptyMessage={emptyMessage}
+                />
+              ) : (
+                <MapCanvas
+                  dataset={dataset ?? null}
+                  mask={mapMask}
+                  candidates={mapHighlights}
+                  hovered={hovered}
+                  selected={selected}
+                  onHover={setHovered}
+                  onSelect={setSelected}
+                  emptyMessage={emptyMessage}
+                />
+              )}
             </div>
           </div>
 

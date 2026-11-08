@@ -54,6 +54,7 @@ export function buildDataset(rawRecords: Record<string, unknown>[]): AsteroidDat
 
   const count = records.length
   const positions = new Float32Array(count * 2)
+  const positions3 = new Float32Array(count * 3)
   const a = new Float32Array(count)
   const e = new Float32Array(count)
   const inclination = new Float32Array(count)
@@ -78,6 +79,9 @@ export function buildDataset(rawRecords: Record<string, unknown>[]): AsteroidDat
     const r = records[k]
     positions[k * 2] = r.x
     positions[k * 2 + 1] = r.y
+    positions3[k * 3] = r.x
+    positions3[k * 3 + 1] = r.y
+    positions3[k * 3 + 2] = r.z
     a[k] = r.a
     e[k] = r.e
     inclination[k] = r.i
@@ -114,6 +118,7 @@ export function buildDataset(rawRecords: Record<string, unknown>[]): AsteroidDat
     count,
     records,
     positions,
+    positions3,
     a,
     e,
     inclination,

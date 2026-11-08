@@ -6,7 +6,8 @@ import { AsteroidRenderer, type MapView, type OrbitLine } from '@/lib/asteroids/
 import { SpatialIndex } from '@/lib/asteroids/spatial-index'
 import { PLANET_ORBITS, orbitPolyline } from '@/lib/mission/bodies'
 import { asteroidLabel } from './candidates-panel'
-import { CATEGORIES, CATEGORY_IDS, buildColorBuffer, classColor } from '@/lib/asteroids/class-colors'
+import { buildColorBuffer } from '@/lib/asteroids/class-colors'
+import { MapLegend } from './map-legend'
 
 const MIN_SCALE = 15
 const MAX_SCALE = 40000
@@ -257,22 +258,6 @@ export function MapCanvas({
     }
   }
 
-  // Legend: each category with its most common shades.
-  const legend = useMemo(() => {
-    if (!dataset) return []
-    return CATEGORIES.map((cat, ci) => {
-      const counts = new Map<number, number>()
-      for (let k = 0; k < dataset.count; k++) {
-        if (dataset.category[k] === ci) counts.set(dataset.taxonomy[k], (counts.get(dataset.taxonomy[k]) ?? 0) + 1)
-      }
-      const shades = [...counts.entries()]
-        .sort((x, y) => y[1] - x[1])
-        .slice(0, 4)
-        .map(([classIndex]) => classColor(dataset.classes[classIndex], CATEGORY_IDS[ci]))
-      return { id: cat.id, label: cat.label, shades }
-    }).filter((entry) => entry.shades.length > 0)
-  }, [dataset])
-
   const tooltipLabel = dataset && hovered >= 0 && tooltip ? asteroidLabel(dataset, hovered) : null
 
   return (
@@ -327,23 +312,7 @@ export function MapCanvas({
           </button>
         ))}
       </div>
-      {dataset && (
-        <ul
-          aria-label="Composition colours"
-          className="pointer-events-none absolute bottom-3 left-3 flex max-w-[calc(100%-8.5rem)] flex-wrap gap-x-3 gap-y-1 rounded-md bg-[#070707]/80 px-2.5 py-1.5 font-mono text-[11px] text-white/75"
-        >
-          {legend.map((entry) => (
-            <li key={entry.id} className="flex items-center gap-1.5">
-              <span aria-hidden="true" className="flex -space-x-0.5">
-                {entry.shades.map((colour, i) => (
-                  <span key={i} className="size-2 rounded-full" style={{ backgroundColor: colour }} />
-                ))}
-              </span>
-              {entry.label}
-            </li>
-          ))}
-        </ul>
-      )}
+      {dataset && <MapLegend dataset={dataset} />}
       <p className="pointer-events-none absolute top-3 left-3 font-mono text-[11px] text-white/55">
         Sun-centred · x–y plane · au
       </p>
