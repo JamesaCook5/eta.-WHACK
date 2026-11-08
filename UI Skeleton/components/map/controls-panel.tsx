@@ -359,32 +359,6 @@ export function ControlsPanel({
         </div>
 
         <RangeField
-<<<<<<< HEAD
-=======
-          id="filter-a"
-          label="Distance from the Sun"
-          range={filters.a}
-          step={0.01}
-          disabled={disabled}
-          format={(v) => `${v.toFixed(2)} AU`}
-          onChange={(value) => onFiltersChange({ ...filters, a: { ...filters.a, value } })}
-        />
-        <RangeField
-          id="filter-d"
-          label="Diameter"
-          range={filters.diameterLog}
-          step={0.01}
-          disabled={disabled}
-          format={formatDiameter}
-          onChange={(value) =>
-            onFiltersChange({
-              ...filters,
-              diameterLog: { ...filters.diameterLog, value },
-            })
-          }
-        />
-        <RangeField
->>>>>>> 5485ad8ff2e30e76d3723f0faeef9f0c6be1c1a7
           id="filter-i"
           label="Inclination"
           range={filters.inclination}

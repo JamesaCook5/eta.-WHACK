@@ -22,13 +22,8 @@ export function StationKey({ stations, className }: { stations: StationOverlay[]
     >
       {listed.map((s) => (
         <li key={s.label} className={cn('flex items-center gap-1.5 tabular-nums', s.dim && 'opacity-40')}>
-<<<<<<< HEAD
           <span aria-hidden="true" className="size-2 rounded-full border border-white/55 bg-white/10" />
           {s.label} · {s.a.toFixed(2)} au
-=======
-          <span aria-hidden="true" className="size-2 rounded-full ring-1 ring-white/30" style={{ backgroundColor: s.color }} />
-          {s.label}, {s.a.toFixed(2)} AU
->>>>>>> 5485ad8ff2e30e76d3723f0faeef9f0c6be1c1a7
         </li>
       ))}
       {hidden > 0 && (

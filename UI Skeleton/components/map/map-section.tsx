@@ -230,12 +230,6 @@ export function MapSection() {
   // Every planned body stays bright; bodies left out of the plan fade.
   const mapMask = useMemo(() => {
     if (!dataset) return mask
-<<<<<<< HEAD
-    if (supplyMode) {
-      const visible = new Uint8Array(dataset.count)
-      for (const row of supplyRows) visible[row.index] = 1
-      return visible
-    }
     if (planSettings.hierarchical) {
       if (!hierarchyResult) return mask
       const visible = new Uint8Array(dataset.count)
@@ -243,24 +237,17 @@ export function MapSection() {
       for (let j = 0; j < visible.length; j++) visible[j] = (mask?.[j] ?? 1) && assignment[j] !== 255 ? 1 : 0
       return visible
     }
-=======
->>>>>>> 5485ad8ff2e30e76d3723f0faeef9f0c6be1c1a7
     const assignment = planResult?.assignment
     if (!assignment) return mask
     const visible = new Uint8Array(dataset.count)
     for (let j = 0; j < visible.length; j++) visible[j] = assignment[j] === 255 ? 0 : 1
     return visible
-<<<<<<< HEAD
-  }, [dataset, mask, supplyMode, supplyRows, planResult, planSettings.hierarchical, hierarchyResult])
-=======
-  }, [dataset, mask, planResult])
->>>>>>> 5485ad8ff2e30e76d3723f0faeef9f0c6be1c1a7
+  }, [dataset, mask, planResult, planSettings.hierarchical, hierarchyResult])
   // Station layer colours: every asteroid in its station's colour (k-means splits them all).
   // Bodies with none of the product's inputs, and ones that change station across the
   // Monte Carlo draws, are drawn darker; other stations go grey while one is in focus.
   const stationColors = useMemo(() => {
-<<<<<<< HEAD
-    if (supplyMode || !dataset) return null
+    if (!dataset) return null
     if (planSettings.hierarchical) {
       if (!hierarchyResult) return null
       const out = new Uint8Array(dataset.count * 3).fill(55)
@@ -278,9 +265,6 @@ export function MapSection() {
       return out
     }
     if (!planResult?.assignment) return null
-=======
-    if (!dataset || !planResult?.assignment) return null
->>>>>>> 5485ad8ff2e30e76d3723f0faeef9f0c6be1c1a7
     const { assignment, stability, carries } = planResult
     const rgb = planResult.stations.map((_, k) => hexToRgb01(stationColor(k)).map((v) => v * 255))
     const out = new Uint8Array(dataset.count * 3).fill(70)
@@ -298,13 +282,8 @@ export function MapSection() {
       out[o + 2] = rgb[k][2] * f
     }
     return out
-<<<<<<< HEAD
-  }, [supplyMode, dataset, planResult, focusStation, planSettings.hierarchical, hierarchyResult, stationOverlays])
-  const mapStations = supplyMode ? NO_STATIONS : stationOverlays
-=======
-  }, [dataset, planResult, focusStation])
+  }, [dataset, planResult, focusStation, planSettings.hierarchical, hierarchyResult, stationOverlays])
   const mapStations = stationOverlays
->>>>>>> 5485ad8ff2e30e76d3723f0faeef9f0c6be1c1a7
   const visibleCount = useMemo(() => (mask ? mask.reduce((n, v) => n + v, 0) : 0), [mask])
 
   const emptyMessage = isLoading
@@ -321,7 +300,7 @@ export function MapSection() {
       filters={filters}
       onFiltersChange={setFilterState}
       onResetFilters={() => setFilterState(null)}
-      products={productModel?.products ?? null}
+      products={visibleProducts}
       groups={productModel?.groups ?? []}
       plan={planSettings}
       onPlanChange={setPlanSettings}
@@ -350,21 +329,12 @@ export function MapSection() {
           <div className="flex flex-wrap items-center gap-3">
             <p className="text-sm text-white tabular-nums" aria-live="polite">
               {dataset
-<<<<<<< HEAD
-                ? supplyMode
-                  ? `${supplyRows.length.toLocaleString()} mapped ${supplyModel?.minerals[mineralId]?.label.toLowerCase() ?? 'feedstock'} bodies`
-                  : planSettings.hierarchical && hierarchyResult
+                ? planSettings.hierarchical && hierarchyResult
                     ? `${hierarchyResult.stations.length} production stations`
                     : planResult?.assignment
                     ? `${planResult.planned.toLocaleString()} bodies split between ${planResult.stations.length} station${planResult.stations.length === 1 ? '' : 's'}`
                     : `${visibleCount.toLocaleString()} of ${dataset.count.toLocaleString()} match filters`
                 : 'No data'}
-=======
-                ? planResult?.assignment
-                  ? `${planResult.planned.toLocaleString()} asteroids shared between ${planResult.stations.length} station${planResult.stations.length === 1 ? '' : 's'}`
-                  : `Showing ${visibleCount.toLocaleString()} of ${dataset.count.toLocaleString()} asteroids`
-                : ''}
->>>>>>> 5485ad8ff2e30e76d3723f0faeef9f0c6be1c1a7
             </p>
             <div className="inline-flex gap-1 rounded-md bg-white/5 p-1" role="group" aria-label="Map view">
               {([false, true] as const).map((is3d) => (
@@ -388,26 +358,7 @@ export function MapSection() {
           </div>
         </div>
 
-<<<<<<< HEAD
-        <div className="mt-4 flex flex-wrap items-center justify-between gap-2">
-          <div className="inline-flex gap-1 rounded-md bg-white/5 p-1" role="group" aria-label="Map layer">
-            <button
-              type="button"
-              aria-pressed={!supplyMode}
-              onClick={() => setSupplyMode(false)}
-              className={cn('h-8 rounded-md px-3 text-xs transition-colors', !supplyMode ? 'bg-white text-[#0e0e0e]' : 'text-white/75 hover:bg-white/10 hover:text-white')}
-            >
-              Station plan
-            </button>
-            <button
-              type="button"
-              aria-pressed={supplyMode}
-              onClick={() => setSupplyMode(true)}
-              className={cn('h-8 rounded-md px-3 text-xs transition-colors', supplyMode ? 'bg-white text-[#0e0e0e]' : 'text-white/75 hover:bg-white/10 hover:text-white')}
-            >
-              Material supply
-            </button>
-          </div>
+        <div className="mt-4 flex flex-wrap items-center justify-end gap-2">
           <div className="inline-flex gap-1 rounded-md bg-white/5 p-1" role="group" aria-label="Map dimensions">
             <button
               type="button"
@@ -427,7 +378,7 @@ export function MapSection() {
             </button>
           </div>
         </div>
-        {!supplyMode && planSettings.hierarchical && (
+        {planSettings.hierarchical && (
           <div className="mt-2 flex flex-wrap gap-x-3 gap-y-1 font-mono text-[10px] text-white/65" aria-label="Station colors by logarithmic output amount">
             {[
               ['#b91c1c', '0–10× below max'],
@@ -443,8 +394,6 @@ export function MapSection() {
           </div>
         )}
 
-=======
->>>>>>> 5485ad8ff2e30e76d3723f0faeef9f0c6be1c1a7
         <div
           className={cn(
             'grid gap-4 lg:grid-cols-[17rem_minmax(0,1fr)_20rem]',
@@ -508,18 +457,7 @@ export function MapSection() {
               category={dataset && selected >= 0 ? categoryLabel(CATEGORY_IDS[dataset.category[selected]]) : null}
               onClear={() => setSelected(-1)}
             />
-<<<<<<< HEAD
-            {supplyMode ? (
-              <SupplyPanel
-                dataset={dataset ?? null}
-                model={supplyModel ?? null}
-                mineralId={mineralId}
-                onMineralChange={setMineralId}
-                mask={mask}
-              />
-            ) : !planSettings.hierarchical ? (
-=======
->>>>>>> 5485ad8ff2e30e76d3723f0faeef9f0c6be1c1a7
+            {!planSettings.hierarchical ? (
               <StationsPanel
                 dataset={dataset ?? null}
                 model={productModel ?? null}
@@ -535,10 +473,7 @@ export function MapSection() {
                 onSelect={setSelected}
                 onHover={setHovered}
               />
-<<<<<<< HEAD
             ) : hierarchyError ? <p className="glass rounded-md p-4 text-sm text-red-200">Production plan failed: {hierarchyError}</p> : null}
-=======
->>>>>>> 5485ad8ff2e30e76d3723f0faeef9f0c6be1c1a7
           </div>
         </div>
       </div>
