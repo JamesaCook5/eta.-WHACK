@@ -202,7 +202,7 @@ export function ControlsPanel({
           value={plan.productId}
           onChange={(id) => setPlan('productId', id)}
         />
-        <label className="flex cursor-pointer items-center gap-2 text-sm text-white/80">
+        <label className="flex cursor-pointer items-center gap-2 text-sm text-white">
           <input type="checkbox" checked={plan.hierarchical} onChange={(e) => setPlan('hierarchical', e.target.checked)} className="size-4 accent-[var(--color-signal,#52cbff)]" />
           Production-chain station plan
         </label>

@@ -269,50 +269,6 @@ def _distances(X: np.ndarray, C: np.ndarray, chunk: int = 4096) -> np.ndarray:
     return out
 
 
-def _update(X: np.ndarray, w: np.ndarray, labels: np.ndarray, C: np.ndarray) -> np.ndarray:
-    """Weighted means; an empty station moves to the point contributing most to the inertia."""
-    k = C.shape[0]
-    W = np.bincount(labels, weights=w, minlength=k)
-    S = np.stack([np.bincount(labels, weights=w * X[:, t], minlength=k) for t in range(X.shape[1])], axis=1)
-    out = C.copy()
-    full = W > 0
-    out[full] = S[full] / W[full, None]
-    for c in np.flatnonzero(~full):
-        cost = w * ((X - out[labels]) ** 2).sum(1)
-        out[c] = X[int(np.argmax(cost))]
-    return out
-
-
-def _lloyd(X: np.ndarray, w: np.ndarray, C: np.ndarray, max_iter: int):
-    labels = _assign(X, C)
-    it = 0
-    for it in range(1, max_iter + 1):
-        C = _update(X, w, labels, C)
-        new = _assign(X, C)
-        if np.array_equal(new, labels):
-            break
-        labels = new
-    return C, labels, it
-
-
-def _kmeans_pp(X: np.ndarray, w: np.ndarray, k: int, rng: np.random.Generator) -> np.ndarray:
-    """Weighted k-means++: first centre ∝ w, then ∝ w x D²."""
-    n = len(X)
-    p = w / w.sum()
-    C = [X[rng.choice(n, p=p)]]
-    D = ((X - C[0]) ** 2).sum(1)
-    for _ in range(1, k):
-        score = w * D
-        j = rng.choice(n, p=score / score.sum()) if score.sum() > 0 else int(rng.integers(n))
-        C.append(X[j])
-        D = np.minimum(D, ((X - X[j]) ** 2).sum(1))
-    return np.array(C)
-
-
-def _inertia(X, w, labels, C) -> float:
-    return float((w * ((X - C[labels]) ** 2).sum(1)).sum())
-
-
 def _geometric_median(X: np.ndarray, w: np.ndarray, initial: np.ndarray, max_iter: int = 12) -> np.ndarray:
     """Weighted geometric median via modified Weiszfeld iterations."""
     y = initial.astype(float, copy=True)

@@ -5,10 +5,11 @@ should we mine for this product's elements?"  This module answers the next
 question: given a product whose manufacture needs intermediates, where should
 each stage of the production network sit?
 
-The model is deliberately simple and uses the same physical proxy as the
-single-tier planner: an orbit is embedded in a five-dimensional Euclidean space
-and Euclidean distance approximates the relative transfer cost of reaching it. No Lambert
-solver, launch windows or propellant model is used.
+The model uses the same physical proxy as the single-tier planner: an orbit is
+embedded in a five-dimensional Euclidean space, and straight-line distance
+approximates relative transfer cost. Station centers use weighted geometric
+medians to minimize the modeled linear transport cost. No Lambert solver,
+launch windows or propellant model is used.
 
 Pipeline
 --------
@@ -19,7 +20,7 @@ Pipeline
    null.
 2. Place tier-0 mining/feedstock stations from the asteroid table.
 3. Walk the recipe tree bottom-up.  For every process node, gather the outputs
-   of its child stations as weighted points and run the same weighted k-median.
+   of its child stations as weighted points and run the same weighted Weber solve.
    The parent station sits at the weighted centre of its inputs.
 4. Return the production tree and station list.
 

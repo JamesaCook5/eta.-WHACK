@@ -94,7 +94,7 @@ export interface PlanResult {
 }
 
 export interface HierarchyStation {
-  process: string | null; material: string;
+  tier: number; process: string | null; material: string;
   a: number; e: number; i: number; longitude: number; members: number; share: number;
   output: Record<string, number>; inputs?: Record<string, number>;
 }

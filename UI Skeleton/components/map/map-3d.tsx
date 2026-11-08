@@ -245,6 +245,21 @@ function MonteCarloCloud({ stations, mode }: { stations: StationOverlay[]; mode:
   )
 }
 
+/** Stations without a pin (very large plans), batched by output color. */
+function StationDots({ xy, mode, color }: { xy: Float32Array; mode: DistanceScale; color: string }) {
+  const { pts, indices } = useMemo(() => {
+    const n = xy.length / 2
+    const pts = new Float32Array(n * 3)
+    for (let d = 0; d < n; d++) {
+      const [x, y] = scalePoint([xy[d * 2], xy[d * 2 + 1], 0], mode)
+      pts[d * 3] = x
+      pts[d * 3 + 1] = y
+    }
+    return { pts, indices: Array.from({ length: n }, (_, i) => i) }
+  }, [xy, mode])
+  return <Markers positions={pts} indices={indices} size={5} ring={false} color={color} order={3} />
+}
+
 /**
  * Moves the station pins (plain DOM over the canvas) to their projected screen
  * positions on every rendered frame; pins behind the camera are hidden.
@@ -496,6 +511,8 @@ interface Map3DProps {
   mask: Uint8Array | null
   /** Planned stations: position, orbit ring and Monte Carlo positions. */
   stations: StationOverlay[]
+  /** Extra stations grouped by output color (x, y interleaved, au), for very large plans. */
+  stationDots?: { points: Float32Array; color: string }[] | null
   /** Per-asteroid RGB override (e.g. coloured by station); null for composition colours. */
   colors: Uint8Array | null
   /** Pulse the station markers (a new plan just arrived). */
@@ -513,6 +530,7 @@ export function Map3D({
   dataset,
   mask,
   stations,
+  stationDots = null,
   colors: colorOverride,
   freshStations,
   onStationHover,
@@ -611,6 +629,9 @@ export function Map3D({
           <>
             <AsteroidPoints positions={positions} colors={colors} mask={mask} />
             <MonteCarloCloud stations={stations} mode={mode} />
+            {stationDots?.map(({ points, color }) => (
+              <StationDots key={color} xy={points} mode={mode} color={color} />
+            ))}
             <PinProjector points={pinPoints} pins={pinRefs} />
             <Markers positions={positions} indices={hoverSelected} size={8} ring={false} />
             <Picker positions={positions} onHover={handlers.hover} onSelect={handlers.select} />

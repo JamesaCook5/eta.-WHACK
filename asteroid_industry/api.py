@@ -76,6 +76,23 @@ class HierarchyRequest(BaseModel):
     #: Optional material -> process override, for choosing among alternative recipes.
     route: dict[str, str] | None = None
     mask: str | None = None
+    #: The map needs station positions, quantities, and assignments; ``full`` also
+    #: returns the recipe tree, grouped stations, and detailed member records.
+    full: bool = False
+
+
+#: Station fields the map uses.
+_SLIM_STATION_KEYS = ("tier", "process", "material", "a", "e", "i", "longitude", "members", "share", "dvMedian", "inputs", "output")
+
+
+def _slim_hierarchy(result: dict) -> dict:
+    """Drop bulky map data while keeping the quantities needed for colors and station details."""
+    out = {k: v for k, v in result.items() if k not in ("tree", "tiers", "stations")}
+    out["stations"] = [
+        {k: round(s[k], 5) if isinstance(s[k], float) else s[k] for k in _SLIM_STATION_KEYS if k in s}
+        for s in result["stations"]
+    ]
+    return out
 
 
 _cache: OrderedDict[tuple, dict] = OrderedDict()
@@ -170,7 +187,7 @@ def plan_hierarchy(req: HierarchyRequest) -> dict:
     with _lock:
         if key in _cache:
             _cache.move_to_end(key)
-            return _cache[key]
+            return _cache[key] if req.full else _slim_hierarchy(_cache[key])
     try:
         result = h.plan(
             req.product,
@@ -188,4 +205,4 @@ def plan_hierarchy(req: HierarchyRequest) -> dict:
         _cache[key] = result
         while len(_cache) > CACHE_SIZE:
             _cache.popitem(last=False)
-    return result
+    return result if req.full else _slim_hierarchy(result)

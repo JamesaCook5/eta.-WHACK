@@ -21,6 +21,7 @@ const Map3D = dynamic(() => import('./map-3d').then((m) => m.Map3D), {
 import { ControlsPanel } from './controls-panel'
 import { StationsPanel } from './stations-panel'
 import { SelectedPanel } from './selected-panel'
+import { HierarchyPanel } from './hierarchy-panel'
 import { CATEGORY_IDS, categoryLabel } from '@/lib/asteroids/class-colors'
 import { PRODUCT_SUPPLY_URL, loadProductSupply, type ProductSupplyModel } from '@/lib/stations/product-supply'
 import { packMask, requestHierarchy, type HierarchyResult } from '@/lib/stations/api'
@@ -29,6 +30,14 @@ import { useStationPlan } from '@/lib/stations/use-station-plan'
 import { hexToRgb01, stationColor, type StationOverlay } from '@/lib/stations/colors'
 
 const NO_STATIONS: StationOverlay[] = []
+/** Above this many stations, only mining stations and the focused one get map pins. */
+const PIN_LIMIT = 60
+const OUTPUT_PALETTE = [
+  ['#7f1d1d', '#b91c1c', '#ef4444'],
+  ['#854d0e', '#ca8a04', '#facc15'],
+  ['#14532d', '#16a34a', '#4ade80'],
+  ['#1e3a8a', '#2563eb', '#60a5fa'],
+]
 
 /**
  * Full screen for the map and both sidebars. Uses the Fullscreen API where the
@@ -159,24 +168,86 @@ export function MapSection() {
   // A hovered pin can unmount without a mouseleave (fewer stations in the new plan), so check both against the count.
   const focusStation =
     hoverStation >= 0 && hoverStation < stationCount ? hoverStation : pinnedStation < stationCount ? pinnedStation : -1
+  // Production chain: the mining (tier 0) stations are the ones the asteroid assignment
+  // indexes, in order; count how many asteroids each is connected to.
+  const miningStations = useMemo(
+    () => (hierarchyResult ? hierarchyResult.stations.flatMap((s, k) => (s.tier === 0 && !s.process ? [k] : [])) : []),
+    [hierarchyResult],
+  )
+  const asteroidCounts = useMemo(() => {
+    const counts = new Array(hierarchyResult?.stations.length ?? 0).fill(0)
+    if (!hierarchyResult) return counts
+    const a = hierarchyResult.asteroidAssignment
+    for (let j = 0; j < a.length; j++) {
+      const k = miningStations[a[j]]
+      if (a[j] !== 255 && k !== undefined) counts[k]++
+    }
+    return counts
+  }, [hierarchyResult, miningStations])
+  // Big production-chain plans have thousands of stations. Only mining stations and the
+  // one in focus get a pin and orbit ring; the rest are drawn as plain dots.
+  const pinnedIndices = useMemo(() => {
+    if (!planSettings.hierarchical || !hierarchyResult) return null
+    const n = hierarchyResult.stations.length
+    if (n <= PIN_LIMIT) return null
+    const keep = new Set(miningStations)
+    if (focusStation >= 0) keep.add(focusStation)
+    if (pinnedStation >= 0 && pinnedStation < n) keep.add(pinnedStation)
+    return [...keep].sort((x, y) => x - y)
+  }, [planSettings.hierarchical, hierarchyResult, miningStations, focusStation, pinnedStation])
+  const outputStationColors = useMemo(() => {
+    if (!hierarchyResult) return []
+    const maxOutput = Math.max(0, ...hierarchyResult.stations.flatMap((s) => Object.values(s.output ?? {})))
+    return hierarchyResult.stations.map((s, k) => {
+      const largestOutput = Math.max(0, ...Object.values(s.output ?? {}))
+      const colorBand = largestOutput > 0 && maxOutput > 0
+        ? Math.min(3, Math.max(0, Math.floor(Math.log10(maxOutput / largestOutput) / 3 + 1e-10)))
+        : 0
+      return OUTPUT_PALETTE[colorBand][k % 3]
+    })
+  }, [hierarchyResult])
+  const stationDots = useMemo(() => {
+    if (!planSettings.hierarchical || !hierarchyResult || hierarchyResult.stations.length <= PIN_LIMIT) return null
+    const groups = new Map<string, number[]>()
+    const pinned = new Set(pinnedIndices ?? [])
+    for (const [k, s] of hierarchyResult.stations.entries()) {
+      if (pinned.has(k)) continue
+      const color = outputStationColors[k] ?? stationColor(k)
+      const points = groups.get(color) ?? []
+      const lon = (s.longitude * Math.PI) / 180
+      points.push(s.a * Math.cos(lon), s.a * Math.sin(lon))
+      groups.set(color, points)
+    }
+    return [...groups].map(([color, points]) => ({ color, points: new Float32Array(points) }))
+  }, [planSettings.hierarchical, hierarchyResult, pinnedIndices, outputStationColors])
   const stationOverlays = useMemo<StationOverlay[]>(() => {
     if (planSettings.hierarchical && hierarchyResult) {
-      const palette = [['#7f1d1d', '#b91c1c', '#ef4444'], ['#854d0e', '#ca8a04', '#facc15'], ['#14532d', '#16a34a', '#4ade80'], ['#1e3a8a', '#2563eb', '#60a5fa']]
-      const maxOutput = Math.max(0, ...hierarchyResult.stations.flatMap((s) => Object.values(s.output)))
-      return hierarchyResult.stations.map((s, k) => {
-        const largestOutput = Math.max(0, ...Object.values(s.output))
-        const colorBand = largestOutput > 0 && maxOutput > 0
-          ? Math.min(3, Math.max(0, Math.floor(Math.log10(maxOutput / largestOutput) / 3 + 1e-10)))
-          : 0
-        const title = `${s.material}${s.process ? ` · ${s.process}` : ''}`
+      const indices = pinnedIndices ?? hierarchyResult.stations.map((_, k) => k)
+      return indices.map((k) => {
+        const s = hierarchyResult.stations[k]
+        const mining = s.tier === 0 && !s.process
+        const lon = (s.longitude * Math.PI) / 180
         const entries = (obj?: Record<string, number>) => Object.entries(obj ?? {}).sort((a, b) => b[1] - a[1]).slice(0, 3).map(([name, amount]) => `${name} ${amount.toPrecision(3)} t`).join(' · ') || 'none'
-        const lon = s.longitude * Math.PI / 180
         return {
-          label: `S${k + 1}`, color: palette[colorBand][k % 3], a: s.a,
-          position: [s.a * Math.cos(lon), s.a * Math.sin(lon), 0] as [number, number, number], cloud: null,
-          dim: focusStation >= 0 && focusStation !== k, active: focusStation === k, pinned: pinnedStation === k,
+          label: `S${k + 1}`,
+          color: outputStationColors[k] ?? stationColor(k),
+          a: s.a,
+          position: [s.a * Math.cos(lon), s.a * Math.sin(lon), 0] as [number, number, number],
+          cloud: null,
+          dim: focusStation >= 0 && focusStation !== k,
+          active: focusStation === k,
+          pinned: pinnedStation === k,
           compact: hierarchyResult.stations.length > 24,
-          info: { title, lines: [s.material, `Process: ${s.process ?? 'Raw asteroid extraction'}`, `Inputs: ${entries(s.inputs)}`, `Outputs: ${entries(s.output)}`, `${s.members} suppliers · ${(s.share * 100).toFixed(1)}% of supply`] },
+          info: {
+            title: `${s.material}${s.process ? ` · ${s.process}` : ''}`,
+            lines: [
+              `Process: ${s.process ?? 'Raw asteroid extraction'}`,
+              `Inputs: ${entries(s.inputs)}`,
+              `Outputs: ${entries(s.output)}`,
+              mining ? `${asteroidCounts[k].toLocaleString()} asteroids connected` : `${s.members} suppliers · ${(s.share * 100).toFixed(1)}% of supply`,
+              `${s.a.toFixed(2)} AU from the Sun`,
+            ],
+          },
         }
       })
     }
@@ -216,7 +287,7 @@ export function MapSection() {
         },
       }
     })
-  }, [planResult, hierarchyResult, planSettings.hierarchical, elementLabels, product, focusStation, pinnedStation])
+  }, [planResult, hierarchyResult, planSettings.hierarchical, pinnedIndices, asteroidCounts, outputStationColors, elementLabels, product, focusStation, pinnedStation])
   // Pulse the station pins for a few seconds whenever a new plan arrives.
   const [freshStations, setFreshStations] = useState(false)
   const nominalResult = !planSettings.hierarchical && plan.status === 'sampling' ? plan.result : null
@@ -250,17 +321,21 @@ export function MapSection() {
     if (!dataset) return null
     if (planSettings.hierarchical) {
       if (!hierarchyResult) return null
-      const out = new Uint8Array(dataset.count * 3).fill(55)
+      const out = new Uint8Array(dataset.count * 3).fill(70)
       const assignment = hierarchyResult.asteroidAssignment
+      const focusMining = focusStation >= 0 && miningStations.includes(focusStation)
       for (let j = 0; j < dataset.count; j++) {
-        const station = assignment[j]
-        const color = stationOverlays[station]?.color
-        if (station === 255 || !color) continue
-        const [r, g, b] = hexToRgb01(color)
-        const scale = focusStation >= 0 && station !== focusStation ? 0.35 : 1
-        out[j * 3] = 255 * r * scale
-        out[j * 3 + 1] = 255 * g * scale
-        out[j * 3 + 2] = 255 * b * scale
+        const k = miningStations[assignment[j]]
+        if (assignment[j] === 255 || k === undefined) continue
+        const o = j * 3
+        if (focusMining && k !== focusStation) {
+          out[o] = out[o + 1] = out[o + 2] = 85
+          continue
+        }
+        const [r, g, b] = hexToRgb01(outputStationColors[k] ?? stationColor(k))
+        out[o] = 255 * r
+        out[o + 1] = 255 * g
+        out[o + 2] = 255 * b
       }
       return out
     }
@@ -282,8 +357,11 @@ export function MapSection() {
       out[o + 2] = rgb[k][2] * f
     }
     return out
-  }, [dataset, planResult, focusStation, planSettings.hierarchical, hierarchyResult, stationOverlays])
+  }, [dataset, planResult, focusStation, planSettings.hierarchical, hierarchyResult, miningStations, outputStationColors])
   const mapStations = stationOverlays
+  // The maps report positions in mapStations; turn them back into station numbers.
+  const onMapStationHover = useCallback((i: number) => setHoverStation(i < 0 ? -1 : (pinnedIndices?.[i] ?? i)), [pinnedIndices])
+  const onMapStationClick = useCallback((i: number) => onStationClick(pinnedIndices?.[i] ?? i), [pinnedIndices, onStationClick])
   const visibleCount = useMemo(() => (mask ? mask.reduce((n, v) => n + v, 0) : 0), [mask])
 
   const emptyMessage = isLoading
@@ -330,11 +408,11 @@ export function MapSection() {
             <p className="text-sm text-white tabular-nums" aria-live="polite">
               {dataset
                 ? planSettings.hierarchical && hierarchyResult
-                    ? `${hierarchyResult.stations.length} production stations`
+                    ? `${miningStations.length} mining and ${hierarchyResult.stations.length - miningStations.length} processing stations`
                     : planResult?.assignment
-                    ? `${planResult.planned.toLocaleString()} bodies split between ${planResult.stations.length} station${planResult.stations.length === 1 ? '' : 's'}`
-                    : `${visibleCount.toLocaleString()} of ${dataset.count.toLocaleString()} match filters`
-                : 'No data'}
+                    ? `${planResult.planned.toLocaleString()} asteroids shared between ${planResult.stations.length} station${planResult.stations.length === 1 ? '' : 's'}`
+                    : `Showing ${visibleCount.toLocaleString()} of ${dataset.count.toLocaleString()} asteroids`
+                : ''}
             </p>
             <div className="inline-flex gap-1 rounded-md bg-white/5 p-1" role="group" aria-label="Map view">
               {([false, true] as const).map((is3d) => (
@@ -358,26 +436,6 @@ export function MapSection() {
           </div>
         </div>
 
-        <div className="mt-4 flex flex-wrap items-center justify-end gap-2">
-          <div className="inline-flex gap-1 rounded-md bg-white/5 p-1" role="group" aria-label="Map dimensions">
-            <button
-              type="button"
-              aria-pressed={!view3d}
-              onClick={() => setView3d(false)}
-              className={cn('h-8 rounded-md px-3 text-xs transition-colors', !view3d ? 'bg-white text-[#0e0e0e]' : 'text-white/75 hover:bg-white/10 hover:text-white')}
-            >
-              2D
-            </button>
-            <button
-              type="button"
-              aria-pressed={view3d}
-              onClick={() => setView3d(true)}
-              className={cn('h-8 rounded-md px-3 text-xs transition-colors', view3d ? 'bg-white text-[#0e0e0e]' : 'text-white/75 hover:bg-white/10 hover:text-white')}
-            >
-              3D
-            </button>
-          </div>
-        </div>
         {planSettings.hierarchical && (
           <div className="mt-2 flex flex-wrap gap-x-3 gap-y-1 font-mono text-[10px] text-white/65" aria-label="Station colors by logarithmic output amount">
             {[
@@ -393,7 +451,6 @@ export function MapSection() {
             ))}
           </div>
         )}
-
         <div
           className={cn(
             'grid gap-4 lg:grid-cols-[17rem_minmax(0,1fr)_20rem]',
@@ -424,8 +481,9 @@ export function MapSection() {
                   stations={mapStations}
                   colors={stationColors}
                   freshStations={freshStations}
-                  onStationHover={setHoverStation}
-                  onStationClick={onStationClick}
+                  stationDots={stationDots}
+                  onStationHover={onMapStationHover}
+                  onStationClick={onMapStationClick}
                   hovered={hovered}
                   selected={selected}
                   onHover={setHovered}
@@ -439,8 +497,9 @@ export function MapSection() {
                   stations={mapStations}
                   colors={stationColors}
                   freshStations={freshStations}
-                  onStationHover={setHoverStation}
-                  onStationClick={onStationClick}
+                  stationDots={stationDots}
+                  onStationHover={onMapStationHover}
+                  onStationClick={onMapStationClick}
                   hovered={hovered}
                   selected={selected}
                   onHover={setHovered}
@@ -473,7 +532,19 @@ export function MapSection() {
                 onSelect={setSelected}
                 onHover={setHovered}
               />
-            ) : hierarchyError ? <p className="glass rounded-md p-4 text-sm text-red-200">Production plan failed: {hierarchyError}</p> : null}
+            ) : (
+              <HierarchyPanel
+                result={hierarchyResult}
+                error={hierarchyError}
+                asteroidCounts={asteroidCounts}
+                miningStations={miningStations}
+                focusStation={focusStation}
+                pinnedStation={pinnedStation}
+                onHoverStation={setHoverStation}
+                onPinStation={onStationClick}
+                colors={outputStationColors}
+              />
+            )}
           </div>
         </div>
       </div>
