@@ -197,8 +197,7 @@ export function MapCanvas({
       // Station orbit (dotted), then where the station landed in each Monte Carlo draw.
       ...stations.map((s) => ({
         points: circle(s.a, Math.round(90 + s.a * 40)),
-        color: [...hexToRgb01(s.color), s.dim ? 0.15 : 0.5] as OrbitLine['color'],
-        dotSize: s.dim ? 2 : 2.5,
+        color: [0.52, 0.54, 0.57, s.dim ? 0.12 : 0.28] as OrbitLine['color'],
       })),
       ...stations
         .filter((s) => s.cloud && !s.dim)

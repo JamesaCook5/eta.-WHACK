@@ -25,7 +25,7 @@ import { SupplyPanel } from './supply-panel'
 import { estimateFeedstock, MATERIAL_SUPPLY_URL, loadMaterialSupply, type MaterialSupplyModel } from '@/lib/mission/material-supply'
 import { CATEGORY_IDS, categoryLabel } from '@/lib/asteroids/class-colors'
 import { PRODUCT_SUPPLY_URL, loadProductSupply, type ProductSupplyModel } from '@/lib/stations/product-supply'
-import { packMask } from '@/lib/stations/api'
+import { packMask, requestHierarchy, type HierarchyResult } from '@/lib/stations/api'
 import { DEFAULT_PLAN, MONTE_CARLO_DRAWS, type PlanSettings } from '@/lib/stations/settings'
 import { useStationPlan } from '@/lib/stations/use-station-plan'
 import { hexToRgb01, stationColor, type StationOverlay } from '@/lib/stations/colors'
@@ -123,7 +123,8 @@ export function MapSection() {
 
   // Station plan: computed by the Python planner (asteroid_industry/api.py) for the
   // product and the filtered asteroids; the UI only draws what it returns.
-  const product = productModel?.products.find((p) => p.id === planSettings.productId) ?? null
+  const visibleProducts = productModel?.products.filter((p) => !/conceptual|future concept/i.test(p.label)) ?? null
+  const product = visibleProducts?.find((p) => p.id === planSettings.productId) ?? null
   const packedMask = useMemo(() => (mask ? packMask(mask) : null), [mask])
   const planRequest = useMemo(
     () =>
@@ -138,7 +139,21 @@ export function MapSection() {
         : null,
     [product, packedMask, planSettings.stations, planSettings.tripYears, planSettings.includeOuter],
   )
-  const plan = useStationPlan(planRequest, MONTE_CARLO_DRAWS)
+  // The flat planner's k-means and Monte Carlo cloud are irrelevant in
+  // hierarchical mode; only request it when that layer is selected.
+  const plan = useStationPlan(planSettings.hierarchical ? null : planRequest, MONTE_CARLO_DRAWS)
+  const [hierarchyResult, setHierarchyResult] = useState<HierarchyResult | null>(null)
+  const [hierarchyError, setHierarchyError] = useState<string | null>(null)
+  useEffect(() => {
+    if (!planSettings.hierarchical || !planRequest) { setHierarchyResult(null); setHierarchyError(null); return }
+    setHierarchyResult(null)
+    setHierarchyError(null)
+    const abort = new AbortController()
+    const timer = window.setTimeout(() => requestHierarchy(planRequest, abort.signal).then(setHierarchyResult).catch((err) => {
+      if (!abort.signal.aborted) setHierarchyError(err instanceof Error ? err.message : String(err))
+    }), 200)
+    return () => { clearTimeout(timer); abort.abort() }
+  }, [planSettings.hierarchical, planRequest])
   const planKey = planRequest ? JSON.stringify(planRequest) : null
   // The plan on screen must belong to the current request, not an older product or filter set.
   const planStale = !plan.result || plan.key !== planKey
@@ -147,12 +162,33 @@ export function MapSection() {
     () => Object.fromEntries((productModel?.elements ?? []).map((el) => [el.id, el.label])),
     [productModel],
   )
-  const stationCount = planResult ? planResult.stations.length : 0
+  const stationCount = planSettings.hierarchical ? hierarchyResult?.stations.length ?? 0 : planResult?.stations.length ?? 0
   useEffect(() => setHoverStation(-1), [stationCount])
   // A hovered pin can unmount without a mouseleave (fewer stations in the new plan), so check both against the count.
   const focusStation =
     hoverStation >= 0 && hoverStation < stationCount ? hoverStation : pinnedStation < stationCount ? pinnedStation : -1
   const stationOverlays = useMemo<StationOverlay[]>(() => {
+    if (planSettings.hierarchical && hierarchyResult) {
+      const palette = [['#7f1d1d', '#b91c1c', '#ef4444'], ['#854d0e', '#ca8a04', '#facc15'], ['#14532d', '#16a34a', '#4ade80'], ['#1e3a8a', '#2563eb', '#60a5fa']]
+      const maxOutput = Math.max(0, ...hierarchyResult.stations.flatMap((s) => Object.values(s.output)))
+      return hierarchyResult.stations.map((s, k) => {
+        const largestOutput = Math.max(0, ...Object.values(s.output))
+        const colorBand = largestOutput > 0 && maxOutput > 0
+          ? Math.min(3, Math.max(0, Math.floor(Math.log10(maxOutput / largestOutput) + 1e-10)))
+          : 0
+        const title = `${s.material}${s.process ? ` · ${s.process}` : ''}`
+        const entries = (obj?: Record<string, number>) => Object.entries(obj ?? {}).sort((a, b) => b[1] - a[1]).slice(0, 3).map(([name, amount]) => `${name} ${amount.toPrecision(3)} t`).join(' · ') || 'none'
+        const lon = s.longitude * Math.PI / 180
+        return {
+          label: `S${k + 1}`, color: palette[colorBand][k % 3], a: s.a,
+          position: [s.a * Math.cos(lon), s.a * Math.sin(lon), 0] as [number, number, number], cloud: null,
+          dim: focusStation >= 0 && focusStation !== k, active: focusStation === k, pinned: pinnedStation === k,
+          compact: hierarchyResult.stations.length > 24,
+          info: { title, lines: [s.material, `Process: ${s.process ?? 'Raw asteroid extraction'}`, `Inputs: ${entries(s.inputs)}`, `Outputs: ${entries(s.output)}`, `${s.members} suppliers · ${(s.share * 100).toFixed(1)}% of supply`] },
+        }
+      })
+    }
+    if (planSettings.hierarchical) return NO_STATIONS
     if (!planResult) return NO_STATIONS
     const result = planResult
     const required = new Set(result.required)
@@ -189,10 +225,10 @@ export function MapSection() {
         },
       }
     })
-  }, [planResult, elementLabels, product, focusStation, pinnedStation])
+  }, [planResult, hierarchyResult, planSettings.hierarchical, elementLabels, product, focusStation, pinnedStation])
   // Pulse the station pins for a few seconds whenever a new plan arrives.
   const [freshStations, setFreshStations] = useState(false)
-  const nominalResult = plan.status === 'sampling' ? plan.result : null
+  const nominalResult = !planSettings.hierarchical && plan.status === 'sampling' ? plan.result : null
   useEffect(() => {
     if (!nominalResult) return
     setFreshStations(true)
@@ -213,17 +249,41 @@ export function MapSection() {
       for (const row of supplyRows) visible[row.index] = 1
       return visible
     }
+    if (planSettings.hierarchical) {
+      if (!hierarchyResult) return mask
+      const visible = new Uint8Array(dataset.count)
+      const assignment = hierarchyResult.asteroidAssignment
+      for (let j = 0; j < visible.length; j++) visible[j] = (mask?.[j] ?? 1) && assignment[j] !== 255 ? 1 : 0
+      return visible
+    }
     const assignment = planResult?.assignment
     if (!assignment) return mask
     const visible = new Uint8Array(dataset.count)
     for (let j = 0; j < visible.length; j++) visible[j] = assignment[j] === 255 ? 0 : 1
     return visible
-  }, [dataset, mask, supplyMode, supplyRows, planResult])
+  }, [dataset, mask, supplyMode, supplyRows, planResult, planSettings.hierarchical, hierarchyResult])
   // Station layer colours: every asteroid in its station's colour (k-means splits them all).
   // Bodies with none of the product's inputs, and ones that change station across the
   // Monte Carlo draws, are drawn darker; other stations go grey while one is in focus.
   const stationColors = useMemo(() => {
-    if (supplyMode || !dataset || !planResult?.assignment) return null
+    if (supplyMode || !dataset) return null
+    if (planSettings.hierarchical) {
+      if (!hierarchyResult) return null
+      const out = new Uint8Array(dataset.count * 3).fill(55)
+      const assignment = hierarchyResult.asteroidAssignment
+      for (let j = 0; j < dataset.count; j++) {
+        const station = assignment[j]
+        const color = stationOverlays[station]?.color
+        if (station === 255 || !color) continue
+        const [r, g, b] = hexToRgb01(color)
+        const scale = focusStation >= 0 && station !== focusStation ? 0.35 : 1
+        out[j * 3] = 255 * r * scale
+        out[j * 3 + 1] = 255 * g * scale
+        out[j * 3 + 2] = 255 * b * scale
+      }
+      return out
+    }
+    if (!planResult?.assignment) return null
     const { assignment, stability, carries } = planResult
     const rgb = planResult.stations.map((_, k) => hexToRgb01(stationColor(k)).map((v) => v * 255))
     const out = new Uint8Array(dataset.count * 3).fill(70)
@@ -241,7 +301,7 @@ export function MapSection() {
       out[o + 2] = rgb[k][2] * f
     }
     return out
-  }, [supplyMode, dataset, planResult, focusStation])
+  }, [supplyMode, dataset, planResult, focusStation, planSettings.hierarchical, hierarchyResult, stationOverlays])
   const mapStations = supplyMode ? NO_STATIONS : stationOverlays
   const visibleCount = useMemo(() => (mask ? mask.reduce((n, v) => n + v, 0) : 0), [mask])
 
@@ -290,7 +350,9 @@ export function MapSection() {
               {dataset
                 ? supplyMode
                   ? `${supplyRows.length.toLocaleString()} mapped ${supplyModel?.minerals[mineralId]?.label.toLowerCase() ?? 'feedstock'} bodies`
-                  : planResult?.assignment
+                  : planSettings.hierarchical && hierarchyResult
+                    ? `${hierarchyResult.stations.length} production stations`
+                    : planResult?.assignment
                     ? `${planResult.planned.toLocaleString()} bodies split between ${planResult.stations.length} station${planResult.stations.length === 1 ? '' : 's'}`
                     : `${visibleCount.toLocaleString()} of ${dataset.count.toLocaleString()} match filters`
                 : 'No data'}
@@ -339,6 +401,21 @@ export function MapSection() {
             </button>
           </div>
         </div>
+        {!supplyMode && planSettings.hierarchical && (
+          <div className="mt-2 flex flex-wrap gap-x-3 gap-y-1 font-mono text-[10px] text-white/65" aria-label="Station colors by logarithmic output amount">
+            {[
+              ['#b91c1c', '0–10× below max'],
+              ['#ca8a04', '10–100× below max'],
+              ['#16a34a', '100–1,000× below max'],
+              ['#2563eb', '>1,000× below max'],
+            ].map(([color, label]) => (
+              <span key={label} className="inline-flex items-center gap-1.5">
+                <span aria-hidden="true" className="size-2 rounded-full" style={{ backgroundColor: color }} />
+                {label}
+              </span>
+            ))}
+          </div>
+        )}
 
         <div
           className={cn(
@@ -411,7 +488,7 @@ export function MapSection() {
                 onMineralChange={setMineralId}
                 mask={mask}
               />
-            ) : (
+            ) : !planSettings.hierarchical ? (
               <StationsPanel
                 dataset={dataset ?? null}
                 model={productModel ?? null}
@@ -427,7 +504,7 @@ export function MapSection() {
                 onSelect={setSelected}
                 onHover={setHovered}
               />
-            )}
+            ) : hierarchyError ? <p className="glass rounded-md p-4 text-sm text-red-200">Production plan failed: {hierarchyError}</p> : null}
           </div>
         </div>
       </div>

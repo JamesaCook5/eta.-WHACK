@@ -9,7 +9,9 @@ Process, ProcessGraph  Unit-operation DAG with material and equipment flows.
 IndustrialModel        Forward material-flow simulation and backward demand.
 IndustrialSystem       High-level: asteroid -> feedstock inventory -> products.
 StationPlanner         Weighted k-means station placement per product, with a
-                       Monte Carlo over class compositions (served by .api).
+                       Monte Carlo over class and body compositions (served by .api).
+HierarchicalPlanner    Recursive tiered station placement over the manufacturing
+                       DAG, with fallback process quantities and route selection.
 build_product_supply   Product -> asteroid element supply model from the DAGs.
 """
 
@@ -26,6 +28,7 @@ from .model import IndustrialModel, ProductionPotential, ProductionResult, Requi
 from .system import AsteroidAssessment, IndustrialSystem
 from .product_supply import build_product_supply
 from .stations import StationPlanner
+from .hierarchy import HierarchicalPlanner, Recipe, RecipeGraph, RecipeNode
 from .spatial import (
     SpatialBin,
     SpatialMap,
@@ -59,4 +62,8 @@ __all__ = [
     "plot_spatial_map",
     "build_product_supply",
     "StationPlanner",
+    "HierarchicalPlanner",
+    "Recipe",
+    "RecipeGraph",
+    "RecipeNode",
 ]

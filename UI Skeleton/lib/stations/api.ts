@@ -93,6 +93,20 @@ export interface PlanResult {
   ms: number
 }
 
+export interface HierarchyStation {
+  process: string | null; material: string;
+  a: number; e: number; i: number; longitude: number; members: number; share: number;
+  output: Record<string, number>; inputs?: Record<string, number>;
+}
+export interface HierarchyResult { product: string; productLabel: string; stations: HierarchyStation[]; asteroidAssignment: Uint8Array; ms: number; tripYears: number }
+
+export async function requestHierarchy(req: Omit<PlanRequest, 'draws'>, signal: AbortSignal): Promise<HierarchyResult> {
+  const res = await fetch(`${PLANNER_URL}/plan/hierarchy`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(req), signal })
+  if (!res.ok) throw new Error(`Hierarchy planner failed (${res.status}): ${await res.text()}`)
+  const raw = await res.json()
+  return { ...raw, asteroidAssignment: fromBase64(raw.asteroidAssignment) }
+}
+
 const fromBase64 = (text: string) => {
   const bin = atob(text)
   const out = new Uint8Array(bin.length)

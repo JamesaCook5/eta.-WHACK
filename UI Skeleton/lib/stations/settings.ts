@@ -8,6 +8,7 @@ export interface PlanSettings {
   tripYears: number
   /** Include Centaurs and Kuiper-belt objects (far outliers that each pull a station to themselves). */
   includeOuter: boolean
+  hierarchical: boolean
 }
 
 export const DEFAULT_PLAN: PlanSettings = {
@@ -15,6 +16,7 @@ export const DEFAULT_PLAN: PlanSettings = {
   stations: 3,
   tripYears: 2,
   includeOuter: false,
+  hierarchical: true,
 }
 
 /** k in k-means; the Python planner allows up to 250 (assignment is one byte per asteroid). */

@@ -16,11 +16,6 @@ import type { ProductEntry } from '@/lib/stations/product-supply'
 import { STATION_LIMITS, STATION_PRESETS, TRIP_LIMITS, type PlanSettings } from '@/lib/stations/settings'
 import { RangeField, ValueField } from './range-field'
 
-const formatDiameter = (log: number) => {
-  const d = 10 ** log
-  return d < 1 ? `${d.toFixed(2)} km` : d < 10 ? `${d.toFixed(1)} km` : `${Math.round(d)} km`
-}
-
 function Chip({
   active,
   onClick,
@@ -215,6 +210,10 @@ export function ControlsPanel({
           value={plan.productId}
           onChange={(id) => setPlan('productId', id)}
         />
+        <label className="flex cursor-pointer items-center gap-2 text-sm text-white/80">
+          <input type="checkbox" checked={plan.hierarchical} onChange={(e) => setPlan('hierarchical', e.target.checked)} className="size-4 accent-[var(--color-signal,#52cbff)]" />
+          Production-chain station plan
+        </label>
         <StationCount value={plan.stations} onChange={(n) => setPlan('stations', n)} />
         <div className="flex flex-col gap-2">
           <ValueField
@@ -392,29 +391,6 @@ export function ControlsPanel({
           </p>
         </div>
 
-        <RangeField
-          id="filter-a"
-          label="Semi-major axis"
-          range={filters.a}
-          step={0.01}
-          disabled={disabled}
-          format={(v) => `${v.toFixed(2)} au`}
-          onChange={(value) => onFiltersChange({ ...filters, a: { ...filters.a, value } })}
-        />
-        <RangeField
-          id="filter-d"
-          label="Diameter"
-          range={filters.diameterLog}
-          step={0.01}
-          disabled={disabled}
-          format={formatDiameter}
-          onChange={(value) =>
-            onFiltersChange({
-              ...filters,
-              diameterLog: { ...filters.diameterLog, value },
-            })
-          }
-        />
         <RangeField
           id="filter-i"
           label="Inclination"

@@ -13,7 +13,7 @@ interface StationPinProps {
 }
 
 /**
- * A station on the map: coloured marker with its label, a pulse when it is in
+ * A station on the map: subdued neutral marker with its label, a pulse when it is in
  * focus or newly placed, and a detail card on hover. Shared by the 2D and 3D
  * maps; the parent positions it so (0, 0) is the station.
  */
@@ -63,6 +63,7 @@ export function StationPin({ station, fresh, onHover, onClick }: StationPinProps
               className={cn('absolute inset-0 rounded-full opacity-70', station.active ? 'animate-ping' : '')}
               style={{
                 backgroundColor: station.color,
+                opacity: 0.55,
                 animation: station.active ? undefined : 'ping 1s cubic-bezier(0, 0, 0.2, 1) 3',
               }}
             />
@@ -70,7 +71,7 @@ export function StationPin({ station, fresh, onHover, onClick }: StationPinProps
           <span
             aria-hidden="true"
             className={cn(
-              'relative rounded-full border-2 border-white shadow-[0_0_0_3px_rgba(0,0,0,0.65)] transition-transform group-focus-visible:ring-2 group-focus-visible:ring-white',
+              'relative rounded-full border border-white/70 shadow-[0_0_0_2px_rgba(0,0,0,0.5)] transition-transform group-focus-visible:ring-2 group-focus-visible:ring-white',
               station.compact
                 ? station.active
                   ? 'size-[14px]'
@@ -101,7 +102,7 @@ export function StationPin({ station, fresh, onHover, onClick }: StationPinProps
             side.x === 'right' ? 'left-3' : 'right-3',
             side.y === 'down' ? 'top-4' : 'bottom-4',
           )}
-          style={{ borderColor: station.color }}
+          style={{ borderColor: '#777777' }}
         >
           <p className="text-xs text-white">{station.info.title}</p>
           <ul className="mt-1 flex flex-col gap-0.5 font-mono text-[11px] text-white/75 tabular-nums">

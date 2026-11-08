@@ -295,7 +295,7 @@ function Orbits({ mode, stations }: { mode: DistanceScale; stations: StationOver
         }
         return {
           key: s.label,
-          color: s.color,
+          color: '#85888D',
           pts,
           dim: s.dim,
         }
@@ -312,14 +312,11 @@ function Orbits({ mode, stations }: { mode: DistanceScale; stations: StationOver
           <Line
             points={ring.pts}
             color={ring.color}
-            lineWidth={ring.dim ? 1 : 1.5}
+            lineWidth={1}
             transparent
-            opacity={ring.dim ? 0.2 : 0.6}
-            dashed
-            dashSize={0.05}
-            gapSize={0.03}
+            opacity={ring.dim ? 0.12 : 0.28}
             depthTest={false}
-            renderOrder={3}
+            renderOrder={-1}
           />
         </group>
       ))}

@@ -34,10 +34,12 @@ Monte Carlo
 -----------
 Each draw resamples every taxonomic type's mineral mix from a Dirichlet around
 the lookup's values (concentration set by its confidence grade) and the blend
-weights of mixed classes. All asteroids of a class share a draw. k-means is
-re-run per draw on the grid summary, warm-started from the nominal stations so
-station k stays station k. All draws run together as arrays. Ranges are the
-5th-95th percentiles.
+weights of mixed classes.  Only the composition is resampled; asteroid
+positions, masses and the class assignment are fixed.  Asteroids of the same
+class share that class's draw, because individual assays are needed to justify
+per-object compositions.  k-means is re-run per draw on the grid summary,
+warm-started from the nominal stations so station k stays station k.  All draws
+run together as arrays.  Ranges are the 5th-95th percentiles.
 """
 
 from __future__ import annotations
@@ -208,8 +210,8 @@ class SamplingModel:
             h_in_water=float(model["h_in_water"]),
         )
 
-    def sample_grades(self, draws: int, rng: np.random.Generator) -> np.ndarray:
-        """(draws, S, E) grades in kg/t with every type's mix and every blend resampled."""
+    def _sample_class_mixes(self, draws: int, rng: np.random.Generator) -> np.ndarray:
+        """(draws, S, M) class-level mineral mixes with every type and blend resampled."""
         B, M = self.type_minerals.shape
         type_mix = np.zeros((draws, B, M))
         for b in range(B):
@@ -223,10 +225,18 @@ class SamplingModel:
             nz = self.blend[s] > 0
             g = rng.gamma(BLEND_KAPPA * self.blend[s, nz], size=(draws, int(nz.sum())))
             blend[:, s, nz] = g / g.sum(axis=1, keepdims=True)
-        mix = blend @ type_mix  # (draws, S, M)
+        return blend @ type_mix  # (draws, S, M)
+
+    def _grades_from_mix(self, mix: np.ndarray) -> np.ndarray:
+        """Mineral mixes (..., M) -> element grades (..., E) in kg per tonne."""
         grade = mix @ self.mineral_yield * 1000.0
         if self.h_index >= 0 and self.water_index >= 0:
             grade[..., self.h_index] += grade[..., self.water_index] * self.h_in_water
+        return grade
+
+    def sample_grades(self, draws: int, rng: np.random.Generator) -> np.ndarray:
+        """(draws, S, E) class-level grades in kg/t."""
+        grade = self._grades_from_mix(self._sample_class_mixes(draws, rng))
         # Scenarios that can't be resampled (no or unresolved bases) keep their nominal grades.
         fixed = self.blend.sum(axis=1) == 0
         grade[:, fixed] = self.grade[fixed]
@@ -358,7 +368,14 @@ class StationPlanner:
         return np.column_stack([self.orbit[rows], q * np.cos(ph), q * np.sin(ph)])
 
     @staticmethod
-    def _cells(X: np.ndarray, phase: np.ndarray, w: np.ndarray, scen: np.ndarray, mass: np.ndarray, S: int):
+    def _cells(
+        X: np.ndarray,
+        phase: np.ndarray,
+        w: np.ndarray,
+        scen: np.ndarray | None = None,
+        mass: np.ndarray | None = None,
+        S: int | None = None,
+    ):
         """Grid summary of the asteroids: cells in (ln a, e, sin i, longitude)."""
         def bins(v, lo, hi, nb):
             return np.clip(((v - lo) / max(hi - lo, 1e-9) * nb).astype(np.int64), 0, nb - 1)
@@ -375,9 +392,11 @@ class StationPlanner:
         cX = np.stack([np.bincount(of, weights=wt * X[:, t], minlength=n_cells) for t in range(X.shape[1])], 1)
         cX /= W[:, None]
         cw = np.bincount(of, weights=w, minlength=n_cells)
-        cell_scen = np.zeros((n_cells, S))
+        if scen is None:
+            return of, cX, cw
+        cell_scen = np.zeros((n_cells, int(S)))
         has = scen >= 0
-        np.add.at(cell_scen, (of[has], scen[has]), mass[has] / 1000.0)  # kilotonnes, so grades in kg/t give tonnes
+        np.add.at(cell_scen, (of[has], scen[has]), mass[has] / 1000.0)
         return of, cX, cw, cell_scen
 
     # ------------------------------------------------------------ main
@@ -533,7 +552,20 @@ class StationPlanner:
             })
         return result
 
-    def _monte_carlo(self, base, rows, of, cX, cell_scen, C0, labels, req, draws, rng, cancelled=None) -> None:
+    def _monte_carlo(
+        self,
+        base,
+        rows,
+        of,
+        cX,
+        cell_scen,
+        C0,
+        labels,
+        req,
+        draws,
+        rng,
+        cancelled=None,
+    ) -> None:
         """Re-run k-means on the cells for resampled compositions; add ranges, stability and the cloud.
 
         Each draw is Lloyd's algorithm warm-started from the nominal stations, with
@@ -542,6 +574,11 @@ class StationPlanner:
         its own station and a lower bound on the distance to any other. Draws move
         the stations only a little, so most cells are never rechecked. The result
         is exactly what plain Lloyd iterations would give.
+
+        Only the modeled mineral compositions and mixed-class blend weights are
+        resampled.  Asteroid identities, taxonomy, masses, and orbits remain
+        fixed; bodies assigned to the same composition scenario share that
+        scenario's draw.
         """
         sm = self.sampling
         k, dim = C0.shape
@@ -653,10 +690,10 @@ class StationPlanner:
             stay += np.bincount((np.arange(n_cells)[None, :] * k + lab).ravel(), minlength=n_cells * k).reshape(n_cells, k)
             # Rock mass per station and scenario, then tonnes per element.
             mass_ks = np.stack(
-                [np.bincount(idx, weights=np.broadcast_to(cell_scen[:, s], (D, n_cells)).ravel(), minlength=D * k) for s in range(S)],
-                axis=1,
+                [np.bincount(idx, weights=np.broadcast_to(cell_scen[:, s], (D, n_cells)).ravel(), minlength=D * k)
+                 for s in range(S)], axis=1,
             ).reshape(D, k, S)
-            out_d[b0 : b0 + D] = mass_ks @ grade  # (D, k, E)
+            out_d[b0 : b0 + D] = mass_ks @ grade
             share_d[b0 : b0 + D] = wk / np.maximum(wk.sum(1, keepdims=True), 1e-300)
             a_d[b0 : b0 + D] = np.exp(C[..., 0] / SQRT_125)
             lon = np.arctan2(C[..., 4], C[..., 3])
