@@ -4,17 +4,17 @@ const CARDS = [
   {
     title: 'Resource mapping',
     body: 'We start from the product. Each one in the manufacturing DAG lists the feedstocks it can use, and those break down into elements such as iron, titanium, phosphorus and water. Every asteroid then gets a grade for each element based on its class: the minerals the chemical DAG expects it to contain, multiplied by how much of that element each mineral typically gives up. X-types are split by albedo, and anything with no asteroid source is marked as imported from Earth.',
-    file: 'tools/build_product_supply_data.py → lib/stations/product-supply.ts',
+    file: 'asteroid_industry/product_supply.py',
   },
   {
     title: 'Placement',
     body: 'Stations are placed with weighted k-means over every filtered asteroid. Each asteroid goes to its nearest station, with no distance limit and no sharing, and each station sits at the tonnage-weighted centre of its asteroids. Distance is the cheapest way there: the Δv to match the asteroid’s orbit (size, shape and tilt), plus a phasing burn to catch up with it within the chosen trip time (roughly ⅔ × arc length ÷ trip time). Each asteroid is weighted by the tonnes of the product’s inputs it holds. Centaurs and Kuiper-belt objects are left out unless you include them, because k-means would give each one a station of its own.',
-    file: 'lib/stations/optimise.ts',
+    file: 'asteroid_industry/stations.py',
   },
   {
     title: 'Output and ranges',
     body: 'A station yields what its asteroids contain, in that ratio: magnetite gives iron and oxygen together, so co-products are listed alongside the product’s inputs. Mineral make-ups are uncertain, so a Monte Carlo resamples every class’s mix 1000 times (more widely for classes the lookup rates as low confidence) and re-runs k-means each time. Ranges are the 5th to 95th percentiles, and faint dots on the map show where each station landed.',
-    file: 'lib/stations/optimise.ts',
+    file: 'asteroid_industry/stations.py',
   },
   {
     title: 'Not modelled yet',

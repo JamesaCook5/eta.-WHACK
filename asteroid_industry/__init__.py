@@ -8,6 +8,9 @@ AsteroidCatalog        Adapter for the project's parquet dataset.
 Process, ProcessGraph  Unit-operation DAG with material and equipment flows.
 IndustrialModel        Forward material-flow simulation and backward demand.
 IndustrialSystem       High-level: asteroid -> feedstock inventory -> products.
+StationPlanner         Weighted k-means station placement per product, with a
+                       Monte Carlo over class compositions (served by .api).
+build_product_supply   Product -> asteroid element supply model from the DAGs.
 """
 
 from .composition import (
@@ -21,6 +24,8 @@ from .asteroid import Asteroid, AsteroidCatalog, ResourceEstimate, estimate_reso
 from .processes import Process, ProcessGraph
 from .model import IndustrialModel, ProductionPotential, ProductionResult, RequiredInputs
 from .system import AsteroidAssessment, IndustrialSystem
+from .product_supply import build_product_supply
+from .stations import StationPlanner
 from .spatial import (
     SpatialBin,
     SpatialMap,
@@ -52,4 +57,6 @@ __all__ = [
     "build_spatial_map",
     "build_spatial_maps",
     "plot_spatial_map",
+    "build_product_supply",
+    "StationPlanner",
 ]

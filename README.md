@@ -10,3 +10,17 @@
 - Design the space simulation and how we will represent the different asteroids and planets.
 - Design the UI of the program/Logo
 - Create presentation
+
+## Running the app
+
+The station planner (weighted k-means + Monte Carlo) runs in Python; the UI only calls it and draws the result.
+
+```sh
+pip install -r requirements.txt
+uvicorn asteroid_industry.api:app --port 8000   # from the repo root
+
+cd "UI Skeleton" && pnpm install && pnpm dev     # proxies /api/planner/* to the planner
+```
+
+Set `PLANNER_URL` for the UI if the planner runs somewhere other than `http://127.0.0.1:8000`.
+After changing either DAG, regenerate the product model with `python tools/build_product_supply_data.py`.

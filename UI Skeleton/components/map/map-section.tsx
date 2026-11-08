@@ -24,7 +24,8 @@ import { SelectedPanel } from './selected-panel'
 import { SupplyPanel } from './supply-panel'
 import { estimateFeedstock, MATERIAL_SUPPLY_URL, loadMaterialSupply, type MaterialSupplyModel } from '@/lib/mission/material-supply'
 import { CATEGORY_IDS, categoryLabel } from '@/lib/asteroids/class-colors'
-import { PRODUCT_SUPPLY_URL, loadProductSupply, prepareProblem, type ProductSupplyModel } from '@/lib/stations/product-supply'
+import { PRODUCT_SUPPLY_URL, loadProductSupply, type ProductSupplyModel } from '@/lib/stations/product-supply'
+import { packMask } from '@/lib/stations/api'
 import { DEFAULT_PLAN, MONTE_CARLO_DRAWS, type PlanSettings } from '@/lib/stations/settings'
 import { useStationPlan } from '@/lib/stations/use-station-plan'
 import { hexToRgb01, stationColor, type StationOverlay } from '@/lib/stations/colors'
@@ -120,28 +121,37 @@ export function MapSection() {
     [dataset, deferredFilters],
   )
 
-  // Station plan: the product's DAG inputs → per-asteroid supply → optimiser (in a worker).
+  // Station plan: computed by the Python planner (asteroid_industry/api.py) for the
+  // product and the filtered asteroids; the UI only draws what it returns.
   const product = productModel?.products.find((p) => p.id === planSettings.productId) ?? null
-  const prepared = useMemo(
+  const packedMask = useMemo(() => (mask ? packMask(mask) : null), [mask])
+  const planRequest = useMemo(
     () =>
-      dataset && productModel && product && mask && product.elements.length > 0
-        ? prepareProblem(dataset, productModel, product, mask, planSettings.includeOuter)
+      product && product.elements.length > 0 && packedMask
+        ? {
+            product: product.id,
+            stations: planSettings.stations,
+            trip_years: planSettings.tripYears,
+            include_outer: planSettings.includeOuter,
+            mask: packedMask,
+          }
         : null,
-    [dataset, productModel, product, mask, planSettings.includeOuter],
+    [product, packedMask, planSettings.stations, planSettings.tripYears, planSettings.includeOuter],
   )
-  const solvable = prepared !== null && prepared.elements.every((el) => el.carriers > 0)
-  const plan = useStationPlan(
-    solvable ? prepared.problem : null,
-    { stations: planSettings.stations, tripYears: planSettings.tripYears, draws: MONTE_CARLO_DRAWS },
-    solvable ? planSettings.productId : null,
+  const plan = useStationPlan(planRequest, MONTE_CARLO_DRAWS)
+  const planKey = planRequest ? JSON.stringify(planRequest) : null
+  // The plan on screen must belong to the current request, not an older product or filter set.
+  const planStale = !plan.result || plan.key !== planKey
+  const planResult = planStale ? null : plan.result
+  const elementLabels = useMemo(
+    () => Object.fromEntries((productModel?.elements ?? []).map((el) => [el.id, el.label])),
+    [productModel],
   )
-  // The plan on screen must belong to the current problem (same rows), not an older filter set.
-  const planStale = !solvable || plan.problem !== prepared.problem || !plan.result
-  const stationCount = !planStale && plan.result ? plan.result.stations.length : 0
+  const stationCount = planResult ? planResult.stations.length : 0
   const focusStation = hoverStation >= 0 ? hoverStation : pinnedStation < stationCount ? pinnedStation : -1
   const stationOverlays = useMemo<StationOverlay[]>(() => {
-    if (planStale || !plan.result || !prepared) return NO_STATIONS
-    const result = plan.result
+    if (!planResult) return NO_STATIONS
+    const result = planResult
     const required = new Set(result.required)
     return result.stations.map((s, k) => {
       const lon = (s.longitude * Math.PI) / 180
@@ -151,11 +161,9 @@ export function MapSection() {
         .filter((x) => required.has(x.id))
         .sort((p, q) => q.v - p.v)
         .slice(0, 3)
-        .map((x) => `${prepared.labels[x.id] ?? x.id} ${total > 0 ? ((x.v / total) * 100).toFixed(1) : '0'}%`)
+        .map((x) => `${elementLabels[x.id] ?? x.id} ${total > 0 ? ((x.v / total) * 100).toFixed(1) : '0'}%`)
         .join(' · ')
-      const cloud = result.cloud
-        ? Float32Array.from({ length: result.draws * 2 }, (_, i) => result.cloud![(Math.floor(i / 2) * result.stations.length + k) * 2 + (i % 2)])
-        : null
+      const cloud = result.cloud?.[k] ?? null
       return {
         label: `S${k + 1}`,
         color: stationColor(k),
@@ -177,7 +185,7 @@ export function MapSection() {
         },
       }
     })
-  }, [plan.result, planStale, prepared, product, focusStation, pinnedStation])
+  }, [planResult, elementLabels, product, focusStation, pinnedStation])
   // Pulse the station pins for a few seconds whenever a new plan arrives.
   const [freshStations, setFreshStations] = useState(false)
   const nominalResult = plan.status === 'sampling' ? plan.result : null
@@ -201,35 +209,35 @@ export function MapSection() {
       for (const row of supplyRows) visible[row.index] = 1
       return visible
     }
-    if (!prepared) return mask
+    const assignment = planResult?.assignment
+    if (!assignment) return mask
     const visible = new Uint8Array(dataset.count)
-    for (const k of prepared.problem.index) visible[k] = 1
+    for (let j = 0; j < visible.length; j++) visible[j] = assignment[j] === 255 ? 0 : 1
     return visible
-  }, [dataset, mask, supplyMode, supplyRows, prepared])
+  }, [dataset, mask, supplyMode, supplyRows, planResult])
   // Station layer colours: every asteroid in its station's colour (k-means splits them all).
   // Bodies with none of the product's inputs, and ones that change station across the
   // Monte Carlo draws, are drawn darker; other stations go grey while one is in focus.
   const stationColors = useMemo(() => {
-    if (supplyMode || !dataset || planStale || !plan.result || !prepared) return null
-    const { assignment, stability } = plan.result
-    const rgb = plan.result.stations.map((_, k) => hexToRgb01(stationColor(k)).map((v) => v * 255))
+    if (supplyMode || !dataset || !planResult?.assignment) return null
+    const { assignment, stability, carries } = planResult
+    const rgb = planResult.stations.map((_, k) => hexToRgb01(stationColor(k)).map((v) => v * 255))
     const out = new Uint8Array(dataset.count * 3).fill(70)
-    const index = prepared.problem.index
-    for (let j = 0; j < index.length; j++) {
+    for (let j = 0; j < dataset.count; j++) {
       const k = assignment[j]
       if (k === 255) continue
-      const o = index[j] * 3
+      const o = j * 3
       if (focusStation >= 0 && k !== focusStation) {
         out[o] = out[o + 1] = out[o + 2] = 85
         continue
       }
-      const f = (prepared.carries[j] ? 1 : 0.4) * (stability ? 0.45 + 0.55 * stability[j] : 1)
+      const f = (carries[j] ? 1 : 0.4) * (stability ? 0.45 + (0.55 * stability[j]) / 255 : 1)
       out[o] = rgb[k][0] * f
       out[o + 1] = rgb[k][1] * f
       out[o + 2] = rgb[k][2] * f
     }
     return out
-  }, [supplyMode, dataset, planStale, plan.result, prepared, focusStation])
+  }, [supplyMode, dataset, planResult, focusStation])
   const mapStations = supplyMode ? NO_STATIONS : stationOverlays
   const visibleCount = useMemo(() => (mask ? mask.reduce((n, v) => n + v, 0) : 0), [mask])
 
@@ -278,8 +286,8 @@ export function MapSection() {
               {dataset
                 ? supplyMode
                   ? `${supplyRows.length.toLocaleString()} mapped ${supplyModel?.minerals[mineralId]?.label.toLowerCase() ?? 'feedstock'} bodies`
-                  : prepared
-                    ? `${prepared.problem.n.toLocaleString()} bodies split between ${planSettings.stations} station${planSettings.stations === 1 ? '' : 's'}`
+                  : planResult?.assignment
+                    ? `${planResult.planned.toLocaleString()} bodies split between ${planResult.stations.length} station${planResult.stations.length === 1 ? '' : 's'}`
                     : `${visibleCount.toLocaleString()} of ${dataset.count.toLocaleString()} match filters`
                 : 'No data'}
             </p>
@@ -404,8 +412,7 @@ export function MapSection() {
                 dataset={dataset ?? null}
                 model={productModel ?? null}
                 product={product}
-                elements={prepared?.elements ?? []}
-                labels={prepared?.labels ?? {}}
+                labels={elementLabels}
                 plan={plan}
                 stale={planStale}
                 focusStation={focusStation}

@@ -4,8 +4,8 @@ import { useEffect, useRef } from 'react'
 import { cn } from '@/lib/utils'
 import type { AsteroidDataset } from '@/lib/asteroids/types'
 import { asteroidLabel } from '@/lib/asteroids/label'
-import type { ElementSummary, ProductEntry, ProductSupplyModel } from '@/lib/stations/product-supply'
-import type { PlannedStation, PlanResult, Range } from '@/lib/stations/optimise'
+import type { ProductEntry, ProductSupplyModel } from '@/lib/stations/product-supply'
+import type { PlannedStation, PlanResult, Range } from '@/lib/stations/api'
 import type { PlanState } from '@/lib/stations/use-station-plan'
 import { stationColor } from '@/lib/stations/colors'
 import { ASSUMED_ACCELERATION_M_S2 } from '@/lib/stations/settings'
@@ -40,8 +40,6 @@ interface StationsPanelProps {
   dataset: AsteroidDataset | null
   model: ProductSupplyModel | null
   product: ProductEntry | null
-  /** The product's asteroid-sourced inputs in the filtered set. */
-  elements: ElementSummary[]
   /** Label of every tracked element, by id. */
   labels: Record<string, string>
   plan: PlanState
@@ -61,7 +59,6 @@ export function StationsPanel({
   dataset,
   model,
   product,
-  elements,
   labels,
   plan,
   stale,
@@ -75,6 +72,8 @@ export function StationsPanel({
 }: StationsPanelProps) {
   const result = stale ? null : plan.result
   const busy = plan.status === 'clustering' || plan.status === 'sampling'
+  // The product's asteroid-sourced inputs in the filtered set, as the planner counted them.
+  const elements = result?.inputs ?? []
   const missing = elements.filter((el) => el.carriers === 0)
   const scarcest = elements.length ? elements.reduce((lo, el) => (el.tonnes < lo.tonnes ? el : lo), elements[0]) : null
 
@@ -88,9 +87,7 @@ export function StationsPanel({
           {plan.status === 'clustering' ? (
             <Busy>Clustering…</Busy>
           ) : plan.status === 'sampling' ? (
-            <Busy>
-              Monte Carlo {plan.progress?.done ?? 0}/{plan.progress?.total ?? 0}
-            </Busy>
+            <Busy>Monte Carlo · {plan.draws.toLocaleString()} draws</Busy>
           ) : plan.status === 'error' ? (
             'Failed'
           ) : result ? (
@@ -135,7 +132,7 @@ export function StationsPanel({
               <ImportedList model={model} product={product} />
             </div>
 
-            {elements.length === 0 ? (
+            {product.elements.length === 0 ? (
               <p className="text-sm leading-relaxed text-white/75">
                 Every input to this product is imported from Earth in the DAG, so there is nothing to place near
                 asteroids.
@@ -145,8 +142,8 @@ export function StationsPanel({
                 No asteroid in the filtered set carries {missing.map((m) => m.label.toLowerCase()).join(', ')}. Widen the
                 filters to plan stations.
               </p>
-            ) : plan.status === 'error' ? (
-              <p className="text-sm text-red-200">The planner failed: {plan.error}</p>
+            ) : plan.status === 'error' && !result ? (
+              <PlannerError offline={plan.offline} error={plan.error} onRetry={plan.retry} />
             ) : !result ? (
               <p className="text-sm text-muted-foreground">Clustering asteroids…</p>
             ) : (
@@ -170,8 +167,9 @@ export function StationsPanel({
                     />
                   ))}
                 </ol>
+                {plan.status === 'error' && <PlannerError offline={plan.offline} error={plan.error} onRetry={plan.retry} />}
                 <p className="font-mono text-[11px] leading-relaxed text-muted-foreground">
-                  Weighted k-means over every filtered asteroid (weight = tonnes of the inputs; best of {result.restarts}{' '}
+                  Python planner · weighted k-means over every filtered asteroid (weight = tonnes of the inputs; best of {result.restarts}{' '}
                   k-means++ starts) · trip time {result.tripYears} yr ·{' '}
                   {result.draws > 0
                     ? `Monte Carlo over class compositions, ${result.draws} draws; ranges are 5th–95th percentile`
@@ -185,6 +183,27 @@ export function StationsPanel({
         )}
       </div>
     </section>
+  )
+}
+
+function PlannerError({ offline, error, onRetry }: { offline: boolean; error: string | null; onRetry: () => void }) {
+  return (
+    <div className="flex flex-col items-start gap-1.5 rounded-md bg-red-500/10 p-3 text-sm text-red-100">
+      {offline ? (
+        <>
+          <p>The station planner (Python) isn't running.</p>
+          <p className="text-xs text-red-100/75">Start it from the repo root:</p>
+          <code className="rounded-sm bg-black/40 px-2 py-1 font-mono text-[11px] text-white/85">
+            uvicorn asteroid_industry.api:app --port 8000
+          </code>
+        </>
+      ) : (
+        <p>The planner failed: {error}</p>
+      )}
+      <button type="button" onClick={onRetry} className="btn glass btn-glass mt-1 h-7 px-3 text-xs">
+        Retry
+      </button>
+    </div>
   )
 }
 
