@@ -52,7 +52,7 @@ export function HierarchyPanel({ result, error, asteroidCounts, miningStations, 
             {mining && (
               <>
                 <p className="text-2xl font-medium text-white tabular-nums">{asteroidCounts[k].toLocaleString()} asteroids</p>
-                <p className="text-xs text-white">connected to this station · {(s.share * 100).toFixed(1)}% of supply</p>
+                <p className="text-xs text-white">connected to this station</p>
               </>
             )}
             <p className="text-xs text-white tabular-nums">{s.a.toFixed(2)} AU from the Sun</p>

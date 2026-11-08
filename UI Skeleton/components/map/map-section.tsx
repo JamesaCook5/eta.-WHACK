@@ -219,7 +219,7 @@ export function MapSection() {
           info: {
             title: `S${k + 1}: ${mining ? 'Mining station' : prettyMaterial(s.material)}`,
             lines: mining
-              ? [`${asteroidCounts[k].toLocaleString()} asteroids connected`, `${s.a.toFixed(2)} AU from the Sun`, `${(s.share * 100).toFixed(1)}% of supply`]
+              ? [`${asteroidCounts[k].toLocaleString()} asteroids connected`, `${s.a.toFixed(2)} AU from the Sun`]
               : [`${s.a.toFixed(2)} AU from the Sun`],
           },
         }
