@@ -27,7 +27,7 @@ import { CATEGORY_IDS, categoryLabel } from '@/lib/asteroids/class-colors'
 import { PRODUCT_SUPPLY_URL, loadProductSupply, prepareProblem, type ProductSupplyModel } from '@/lib/stations/product-supply'
 import { DEFAULT_PLAN, type PlanSettings } from '@/lib/stations/settings'
 import { useStationPlan } from '@/lib/stations/use-station-plan'
-import { reachBand, stationColor, type StationOverlay } from '@/lib/stations/colors'
+import { stationColor, type StationOverlay } from '@/lib/stations/colors'
 
 const NO_STATIONS: StationOverlay[] = []
 
@@ -132,29 +132,51 @@ export function MapSection() {
   const solvable = prepared !== null && prepared.elements.every((el) => el.carriers > 0)
   const plan = useStationPlan(
     solvable ? prepared.problem : null,
-    { stations: planSettings.stations, reachKmS: planSettings.reachKmS },
+    { stations: planSettings.stations, reachHours: planSettings.reachHours, tripYears: planSettings.tripYears },
     solvable ? planSettings.productId : null,
   )
   const planStale = plan.key !== planSettings.productId || !solvable
   const stationCount = !planStale && plan.result ? plan.result.stations.length : 0
   const focusStation = hoverStation >= 0 ? hoverStation : pinnedStation < stationCount ? pinnedStation : -1
   const stationOverlays = useMemo<StationOverlay[]>(() => {
-    if (planStale || !plan.result || !dataset) return NO_STATIONS
-    return plan.result.stations.map((s, k) => {
-      // Marker on the ring at the heliocentric longitude of the largest supplier.
-      const top = s.suppliers[0]?.index ?? -1
-      const angle = top >= 0 ? Math.atan2(dataset.positions3[top * 3 + 1], dataset.positions3[top * 3]) : 0
+    if (planStale || !plan.result || !dataset || !prepared) return NO_STATIONS
+    const result = plan.result
+    return result.stations.map((s, k) => {
+      const lon = (s.longitude * Math.PI) / 180
+      const half = (s.zone.halfAngleDeg * Math.PI) / 180
+      const limiting = prepared.elements[s.bottleneck]?.label ?? '—'
+      const near = s.suppliers.filter((sp) => sp.dv <= result.reachKmS).length
       return {
         label: `S${k + 1}`,
         color: stationColor(k),
         a: s.a,
+        position: [s.a * Math.cos(lon), s.a * Math.sin(lon), 0] as [number, number, number],
+        zone: { aMin: s.zone.aMin, aMax: s.zone.aMax, start: lon - half, end: lon + half },
         suppliers: s.suppliers.map((sp) => sp.index),
-        band: reachBand(s.a, planSettings.reachKmS),
-        marker: [s.a * Math.cos(angle), s.a * Math.sin(angle), 0] as [number, number, number],
         dim: focusStation >= 0 && focusStation !== k,
+        active: focusStation === k,
+        pinned: pinnedStation === k,
+        info: {
+          title: `S${k + 1} · ${product?.label ?? ''}`,
+          lines: [
+            `a ${s.a.toFixed(2)} au · e ${s.e.toFixed(2)} · i ${s.i.toFixed(1)}°`,
+            `Limited by ${limiting}: ${(s.shares[s.bottleneck] * 100).toFixed(1)}% of supply`,
+            `Reach zone ±${s.zone.halfAngleDeg.toFixed(0)}° along orbit, a ${s.zone.aMin.toFixed(2)}–${s.zone.aMax.toFixed(2)} au`,
+            `${near} of top ${s.suppliers.length} suppliers within ${result.reachKmS.toFixed(2)} km/s`,
+          ],
+        },
       }
     })
-  }, [plan.result, planStale, dataset, planSettings.reachKmS, focusStation])
+  }, [plan.result, planStale, dataset, prepared, product, focusStation, pinnedStation])
+  // Pulse the station pins for a few seconds whenever a new plan arrives.
+  const [freshStations, setFreshStations] = useState(false)
+  useEffect(() => {
+    if (!plan.result) return
+    setFreshStations(true)
+    const t = window.setTimeout(() => setFreshStations(false), 3200)
+    return () => window.clearTimeout(t)
+  }, [plan.result])
+  const onStationClick = useCallback((k: number) => setPinnedStation((cur) => (cur === k ? -1 : k)), [])
   const supplyRows = useMemo(
     () => (dataset && supplyModel ? estimateFeedstock(dataset, supplyModel, mineralId, mask) : []),
     [dataset, supplyModel, mineralId, mask],
@@ -299,6 +321,9 @@ export function MapSection() {
                   dataset={dataset ?? null}
                   mask={mapMask}
                   stations={mapStations}
+                  freshStations={freshStations}
+                  onStationHover={setHoverStation}
+                  onStationClick={onStationClick}
                   hovered={hovered}
                   selected={selected}
                   onHover={setHovered}
@@ -310,6 +335,9 @@ export function MapSection() {
                   dataset={dataset ?? null}
                   mask={mapMask}
                   stations={mapStations}
+                  freshStations={freshStations}
+                  onStationHover={setHoverStation}
+                  onStationClick={onStationClick}
                   hovered={hovered}
                   selected={selected}
                   onHover={setHovered}
@@ -345,7 +373,7 @@ export function MapSection() {
                 focusStation={focusStation}
                 pinnedStation={pinnedStation}
                 onHoverStation={setHoverStation}
-                onPinStation={(k) => setPinnedStation((cur) => (cur === k ? -1 : k))}
+                onPinStation={onStationClick}
                 selected={selected}
                 onSelect={setSelected}
                 onHover={setHovered}

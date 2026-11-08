@@ -1,0 +1,107 @@
+'use client'
+
+import { useRef, useState } from 'react'
+import { cn } from '@/lib/utils'
+import type { StationOverlay } from '@/lib/stations/colors'
+
+interface StationPinProps {
+  station: StationOverlay
+  /** Pulse briefly when a new plan arrives. */
+  fresh: boolean
+  onHover: (active: boolean) => void
+  onClick: () => void
+}
+
+/**
+ * A station on the map: coloured marker with its label, a pulse when it is in
+ * focus or newly placed, and a detail card on hover. Shared by the 2D and 3D
+ * maps; the parent positions it so (0, 0) is the station.
+ */
+export function StationPin({ station, fresh, onHover, onClick }: StationPinProps) {
+  const [hover, setHover] = useState(false)
+  // Which side of the pin the card opens on, so it stays inside the map.
+  const [side, setSide] = useState<{ x: 'left' | 'right'; y: 'up' | 'down' }>({ x: 'right', y: 'down' })
+  const ref = useRef<HTMLButtonElement>(null)
+  const show = (on: boolean) => {
+    if (on && ref.current) {
+      const pin = ref.current.getBoundingClientRect()
+      const box = ref.current.closest('[data-map-root]')?.getBoundingClientRect()
+      if (box) {
+        setSide({
+          x: box.right - pin.right < 260 ? 'left' : 'right',
+          y: box.bottom - pin.bottom < 170 ? 'up' : 'down',
+        })
+      }
+    }
+    setHover(on)
+    onHover(on)
+  }
+  const pulse = station.active || fresh
+
+  return (
+    <div className={cn('relative transition-opacity', station.dim && 'opacity-45')}>
+      <button
+        ref={ref}
+        type="button"
+        aria-label={`${station.info.title}. ${station.info.lines.join('. ')}`}
+        aria-pressed={station.pinned}
+        onMouseEnter={() => show(true)}
+        onMouseLeave={() => show(false)}
+        onFocus={() => show(true)}
+        onBlur={() => show(false)}
+        onClick={onClick}
+        className="group absolute top-0 left-0 flex -translate-x-1/2 -translate-y-1/2 cursor-pointer items-center outline-none"
+      >
+        <span className="relative flex size-6 items-center justify-center">
+          {pulse && (
+            <span
+              aria-hidden="true"
+              className={cn('absolute inset-0 rounded-full opacity-70', station.active ? 'animate-ping' : '')}
+              style={{
+                backgroundColor: station.color,
+                animation: station.active ? undefined : 'ping 1s cubic-bezier(0, 0, 0.2, 1) 3',
+              }}
+            />
+          )}
+          <span
+            aria-hidden="true"
+            className={cn(
+              'relative rounded-full border-2 border-white shadow-[0_0_0_3px_rgba(0,0,0,0.65)] transition-transform group-focus-visible:ring-2 group-focus-visible:ring-white',
+              station.dim ? 'size-3' : 'size-[18px]',
+              (station.active || hover) && 'scale-125',
+            )}
+            style={{ backgroundColor: station.color }}
+          />
+        </span>
+      </button>
+      <span
+        aria-hidden="true"
+        className="pointer-events-none absolute top-0 left-3 -translate-y-1/2 rounded-sm px-1 py-px font-mono text-[11px] leading-tight font-semibold text-[#0b0b0b] shadow-[0_0_0_2px_rgba(0,0,0,0.6)]"
+        style={{ backgroundColor: station.color }}
+      >
+        {station.label}
+      </span>
+      {hover && (
+        <div
+          role="tooltip"
+          className={cn(
+            'pointer-events-none absolute z-20 w-60 rounded-md border-l-2 bg-[#101010]/95 px-3 py-2 text-left shadow-lg',
+            side.x === 'right' ? 'left-3' : 'right-3',
+            side.y === 'down' ? 'top-4' : 'bottom-4',
+          )}
+          style={{ borderColor: station.color }}
+        >
+          <p className="text-xs text-white">{station.info.title}</p>
+          <ul className="mt-1 flex flex-col gap-0.5 font-mono text-[11px] text-white/75 tabular-nums">
+            {station.info.lines.map((line) => (
+              <li key={line}>{line}</li>
+            ))}
+          </ul>
+          <p className="mt-1.5 text-[10px] text-white/45">
+            {station.pinned ? 'Click to show all stations' : 'Click to keep this station in focus'}
+          </p>
+        </div>
+      )}
+    </div>
+  )
+}

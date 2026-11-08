@@ -1,5 +1,6 @@
 'use client'
 
+import { useEffect, useRef } from 'react'
 import { cn } from '@/lib/utils'
 import type { AsteroidDataset } from '@/lib/asteroids/types'
 import { asteroidLabel } from '@/lib/asteroids/label'
@@ -158,12 +159,13 @@ export function StationsPanel({
                   ))}
                 </ol>
                 <p className="font-mono text-[11px] leading-relaxed text-muted-foreground">
-                  Total output {pct(result.objective)} (greedy start {pct(result.seedObjective)},{' '}
+                  Reach {result.reachKmS.toFixed(2)} km/s · trip {result.tripYears} yr · relative time-weighted production score{' '}
+                  {pct(result.objective)} (greedy start {pct(result.seedObjective)},{' '}
                   {result.objective > result.seedObjective
                     ? `+${(((result.objective - result.seedObjective) / Math.max(result.seedObjective, 1e-12)) * 100).toFixed(0)}%`
                     : 'unchanged'}
                   ) · {result.iterations} steps · {result.relocations} relocation{result.relocations === 1 ? '' : 's'} ·{' '}
-                  {result.bodies.toLocaleString()} bodies
+                  {result.bodies.toLocaleString()} bodies · normalized supply proxy, not extraction capacity
                 </p>
               </>
             )}
@@ -229,9 +231,15 @@ function StationCard({
   const shown = order.slice(0, Math.min(4, order.length))
   const maxShare = Math.max(...shown.map((x) => x.v), 1e-12)
   const limiting = elements[s.bottleneck]
+  // Bring the card into view when its station is clicked on the map.
+  const ref = useRef<HTMLLIElement>(null)
+  useEffect(() => {
+    if (pinned) ref.current?.scrollIntoView({ block: 'nearest', behavior: 'smooth' })
+  }, [pinned])
 
   return (
     <li
+      ref={ref}
       onMouseEnter={() => onHoverStation(k)}
       onMouseLeave={() => onHoverStation(-1)}
       className={cn(
@@ -259,6 +267,9 @@ function StationCard({
         </button>
         <span className="px-1.5 font-mono text-[11px] text-white/75 tabular-nums">
           Orbit a {s.a.toFixed(3)} au · e {s.e.toFixed(3)} · i {s.i.toFixed(1)}°
+        </span>
+        <span className="px-1.5 font-mono text-[11px] text-white/55 tabular-nums">
+          Longitude {((s.longitude + 360) % 360).toFixed(0)}° · reach zone ±{s.zone.halfAngleDeg.toFixed(0)}° along the orbit
         </span>
       </div>
 
@@ -290,6 +301,7 @@ function StationCard({
         <p className="text-[11px] text-muted-foreground">
           Main suppliers · half the intake from {s.bodies.toLocaleString()} bod{s.bodies === 1 ? 'y' : 'ies'}
         </p>
+        <p className="px-1.5 font-mono text-[10px] text-white/40">body · position vs station · Δv to reach · share</p>
         <ul className="flex flex-col">
           {s.suppliers.slice(0, 5).map((sp) => {
             const r = dataset.records[sp.index]
@@ -312,7 +324,10 @@ function StationCard({
                   <span className="min-w-0 truncate">
                     {asteroidLabel(dataset, sp.index)} <span className="text-white/45">{r.taxonomy_class}</span>
                   </span>
-                  <span className="shrink-0 text-white/60 tabular-nums">{pct(sp.share)}</span>
+                  <span className="shrink-0 text-white/60 tabular-nums">
+                    {sp.offsetDeg >= 0 ? '+' : '−'}
+                    {Math.abs(sp.offsetDeg).toFixed(0)}° · {sp.dv.toFixed(2)} km/s · {pct(sp.share)}
+                  </span>
                 </button>
               </li>
             )

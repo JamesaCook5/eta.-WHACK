@@ -6,7 +6,7 @@ const CARDS = [
   },
   {
     title: 'Placement',
-    body: 'Stations sit in orbit space, not on asteroids. Distance is the orbit-change velocity between a station and an asteroid (the metric used for asteroid families), and a station draws on bodies within its reach. Stations start where a greedy search finds the most output, then move by gradient steps while the reach is narrowed; the weakest station is tried in other places and kept there if total output rises.',
+    body: 'Each station has an orbit and a position along it. The cost of reaching an asteroid is the cheapest way there: the Δv to match its orbit’s size, shape and tilt, plus a phasing manoeuvre to catch up with it along the orbit within the chosen trip time (≈ ⅔ × arc length ÷ trip time). Reach converts that Δv to thrust time at a fixed 0.01 m/s². The optimizer scores supply inside that reach, refines station orbits and positions with gradients, and tries relocations. Asteroid positions are a snapshot; launch windows and propulsion limits are not modelled.',
     file: 'lib/stations/optimise.ts',
   },
   {

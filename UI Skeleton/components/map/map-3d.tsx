@@ -12,6 +12,7 @@ import { asteroidLabel } from '@/lib/asteroids/label'
 import type { StationOverlay } from '@/lib/stations/colors'
 import { MapLegend } from './map-legend'
 import { StationKey } from './station-key'
+import { StationPin } from './station-pin'
 
 /**
  * 3D map (React Three Fiber). Heliocentric ecliptic coordinates, z up.
@@ -51,8 +52,10 @@ function scalePositions(src: Float32Array, mode: DistanceScale): Float32Array {
  * Camera start position for each scale: looking at the Sun from above and to the side.
  * Narrow (portrait) views step back further so the whole belt still fits across.
  */
-function homeCamera(mode: DistanceScale, aspect = 1.4) {
-  const d = (mode === 'linear' ? 9.5 : 5.2) * Math.max(1, 0.9 / aspect)
+function homeCamera(mode: DistanceScale, aspect = 1.4, extent = 0) {
+  // extent: largest scaled radius that must fit (e.g. a station at the Jupiter Trojans).
+  const fits = mode === 'linear' ? 3.6 : 1.9
+  const d = (mode === 'linear' ? 9.5 : 5.2) * Math.max(1, 0.9 / aspect) * Math.max(1, extent / fits)
   return new THREE.Vector3(0, -d * 0.78, d * 0.62)
 }
 
@@ -200,28 +203,55 @@ function Markers({
   return <points geometry={geometry} material={material} frustumCulled={false} renderOrder={order} />
 }
 
-/** One marker per station on its ring: white rim around the station colour. */
-function StationMarkers({ stations, mode }: { stations: StationOverlay[]; mode: DistanceScale }) {
-  const points = useMemo(() => {
-    const out = new Float32Array(stations.length * 3)
-    stations.forEach((s, k) => {
-      const [x, y, z] = s.marker
-      const r = Math.hypot(x, y, z)
-      const f = r > 0 ? scaledRadius(r, mode) / r : 0
-      out.set([x * f, y * f, z * f], k * 3)
-    })
-    return out
-  }, [stations, mode])
+/** Scale a heliocentric point (au) with the distance scale. */
+function scalePoint([x, y, z]: [number, number, number], mode: DistanceScale): [number, number, number] {
+  const r = Math.hypot(x, y, z)
+  const f = r > 0 ? scaledRadius(r, mode) / r : 0
+  return [x * f, y * f, z * f]
+}
+
+/** Lines from each station to its main suppliers. */
+function SupplierLinks({ stations, positions, mode }: { stations: StationOverlay[]; positions: Float32Array; mode: DistanceScale }) {
+  const links = useMemo(
+    () =>
+      stations.map((s) => {
+        const from = scalePoint(s.position, mode)
+        const pts: [number, number, number][] = []
+        for (const idx of s.suppliers) pts.push(from, [positions[idx * 3], positions[idx * 3 + 1], positions[idx * 3 + 2]])
+        return { s, pts }
+      }),
+    [stations, positions, mode],
+  )
   return (
     <>
-      {stations.map((s, k) => (
-        <group key={s.label}>
-          <Markers positions={points} indices={[k]} size={s.dim ? 12 : 19} ring={false} color="#ffffff" order={s.dim ? 4 : 6} />
-          <Markers positions={points} indices={[k]} size={s.dim ? 8 : 14} ring={false} color={s.color} order={s.dim ? 5 : 7} />
-        </group>
-      ))}
+      {links.map(({ s, pts }) =>
+        !s.dim && pts.length > 0 ? (
+          <Line key={s.label} points={pts} segments color={s.color} lineWidth={1.5} transparent opacity={0.75} depthTest={false} renderOrder={4} />
+        ) : null,
+      )}
     </>
   )
+}
+
+/**
+ * Moves the station pins (plain DOM over the canvas) to their projected screen
+ * positions on every rendered frame; pins behind the camera are hidden.
+ */
+function PinProjector({ points, pins }: { points: [number, number, number][]; pins: React.RefObject<(HTMLDivElement | null)[]> }) {
+  const invalidate = useThree((s) => s.invalidate)
+  const v = useMemo(() => new THREE.Vector3(), [])
+  useEffect(() => invalidate(), [points, invalidate])
+  useFrame(({ camera, size }) => {
+    points.forEach((p, k) => {
+      const el = pins.current[k]
+      if (!el) return
+      v.set(p[0], p[1], p[2]).project(camera)
+      const visible = v.z < 1
+      el.style.visibility = visible ? 'visible' : 'hidden'
+      el.style.transform = `translate(${(v.x * 0.5 + 0.5) * size.width}px, ${(0.5 - v.y * 0.5) * size.height}px)`
+    })
+  })
+  return null
 }
 
 function Orbits({ mode, stations }: { mode: DistanceScale; stations: StationOverlay[] }) {
@@ -241,7 +271,7 @@ function Orbits({ mode, stations }: { mode: DistanceScale; stations: StationOver
       }),
     [mode],
   )
-  // Station orbits: a ring of radius a in the ecliptic (the plan fixes a, e and i, not the orientation).
+  // Station orbits: a ring of radius a in the ecliptic, and the reach zone around the station.
   const rings = useMemo(
     () =>
       stations.map((s) => {
@@ -256,12 +286,17 @@ function Orbits({ mode, stations }: { mode: DistanceScale; stations: StationOver
           color: s.color,
           pts,
           dim: s.dim,
-          band: [scaledRadius(s.band[0], mode), scaledRadius(s.band[1], mode)] as [number, number],
+          active: s.active,
+          zone: {
+            r0: scaledRadius(s.zone.aMin, mode),
+            r1: scaledRadius(s.zone.aMax, mode),
+            start: s.zone.start,
+            length: s.zone.end - s.zone.start,
+          },
         }
       }),
     [stations, mode],
   )
-  const focused = stations.some((s) => s.dim)
   return (
     <>
       {lines.map((pts, i) => (
@@ -270,13 +305,13 @@ function Orbits({ mode, stations }: { mode: DistanceScale; stations: StationOver
       {rings.map((ring) => (
         <group key={ring.key}>
           {!ring.dim && (
-            // Reach band: semi-major axes within one reach of the station.
+            // Reach zone: orbits within one reach of the station, around its position.
             <mesh renderOrder={1}>
-              <ringGeometry args={[ring.band[0], ring.band[1], 160]} />
+              <ringGeometry args={[ring.zone.r0, ring.zone.r1, 48, 1, ring.zone.start, ring.zone.length]} />
               <meshBasicMaterial
                 color={ring.color}
                 transparent
-                opacity={focused ? 0.16 : 0.09}
+                opacity={ring.active ? 0.3 : 0.2}
                 side={THREE.DoubleSide}
                 depthWrite={false}
               />
@@ -285,9 +320,9 @@ function Orbits({ mode, stations }: { mode: DistanceScale; stations: StationOver
           <Line
             points={ring.pts}
             color={ring.color}
-            lineWidth={ring.dim ? 1.5 : 3}
+            lineWidth={ring.dim ? 1 : 1.5}
             transparent
-            opacity={ring.dim ? 0.25 : 1}
+            opacity={ring.dim ? 0.2 : 0.6}
             dashed
             dashSize={0.05}
             gapSize={0.03}
@@ -409,7 +444,7 @@ export interface CameraRig {
 }
 
 /** Smooth camera moves for focus/home, driven by the render loop only while moving. */
-function Rig({ mode, rigRef }: { mode: DistanceScale; rigRef: React.RefObject<CameraRig | null> }) {
+function Rig({ mode, extent, rigRef }: { mode: DistanceScale; extent: number; rigRef: React.RefObject<CameraRig | null> }) {
   const camera = useThree((s) => s.camera)
   const controls = useThree((s) => s.controls) as unknown as OrbitControlsLike | null
   const invalidate = useThree((s) => s.invalidate)
@@ -423,7 +458,7 @@ function Rig({ mode, rigRef }: { mode: DistanceScale; rigRef: React.RefObject<Ca
         invalidate()
       },
       home: () => {
-        goal.current = { target: new THREE.Vector3(), camera: homeCamera(mode, aspect) }
+        goal.current = { target: new THREE.Vector3(), camera: homeCamera(mode, aspect, extent) }
         invalidate()
       },
       dolly: (factor) => {
@@ -434,18 +469,18 @@ function Rig({ mode, rigRef }: { mode: DistanceScale; rigRef: React.RefObject<Ca
         invalidate()
       },
     }
-  }, [camera, controls, invalidate, mode, aspect, rigRef])
+  }, [camera, controls, invalidate, mode, aspect, extent, rigRef])
 
   // First frame with controls: place the camera at the home view for this canvas's shape.
   const placed = useRef(false)
   useEffect(() => {
     if (!controls || placed.current) return
     placed.current = true
-    camera.position.copy(homeCamera(mode, aspect))
+    camera.position.copy(homeCamera(mode, aspect, extent))
     controls.target.set(0, 0, 0)
     controls.update()
     invalidate()
-  }, [controls, camera, mode, aspect, invalidate])
+  }, [controls, camera, mode, aspect, extent, invalidate])
 
   useFrame((_, dt) => {
     const g = goal.current
@@ -470,8 +505,12 @@ function Rig({ mode, rigRef }: { mode: DistanceScale; rigRef: React.RefObject<Ca
 interface Map3DProps {
   dataset: AsteroidDataset | null
   mask: Uint8Array | null
-  /** Planned stations: orbit rings plus their suppliers ringed in the station's colour. */
+  /** Planned stations: position, orbit ring, reach zone and suppliers. */
   stations: StationOverlay[]
+  /** Pulse the station markers (a new plan just arrived). */
+  freshStations: boolean
+  onStationHover: (k: number) => void
+  onStationClick: (k: number) => void
   hovered: number
   selected: number
   onHover: (index: number) => void
@@ -479,7 +518,19 @@ interface Map3DProps {
   emptyMessage: string | null
 }
 
-export function Map3D({ dataset, mask, stations, hovered, selected, onHover, onSelect, emptyMessage }: Map3DProps) {
+export function Map3D({
+  dataset,
+  mask,
+  stations,
+  freshStations,
+  onStationHover,
+  onStationClick,
+  hovered,
+  selected,
+  onHover,
+  onSelect,
+  emptyMessage,
+}: Map3DProps) {
   const [mode, setMode] = useState<DistanceScale>('compressed')
   const [tooltip, setTooltip] = useState<{ x: number; y: number } | null>(null)
   const rigRef = useRef<CameraRig | null>(null)
@@ -495,6 +546,23 @@ export function Map3D({ dataset, mask, stations, hovered, selected, onHover, onS
     if (!positions || selected < 0) return
     rigRef.current?.focus(new THREE.Vector3(positions[selected * 3], positions[selected * 3 + 1], positions[selected * 3 + 2]))
   }, [selected, positions])
+
+  // Station pins live outside the canvas; PinProjector keeps them on their stations.
+  const pinRefs = useRef<(HTMLDivElement | null)[]>([])
+  const pinPoints = useMemo(() => stations.map((s) => scalePoint(s.position, mode)), [stations, mode])
+
+  // Home view also fits every planned station; a new plan zooms out if one would be off screen.
+  const stationExtent = useMemo(
+    () => Math.max(0, ...stations.map((s) => scaledRadius(Math.hypot(s.position[0], s.position[1]), mode) * 1.1)),
+    [stations, mode],
+  )
+  useEffect(() => {
+    if (freshStations && stationExtent > (mode === 'linear' ? 3.6 : 1.9)) {
+      // Wait a frame so the rig has the new extent.
+      const t = window.setTimeout(() => rigRef.current?.home(), 50)
+      return () => window.clearTimeout(t)
+    }
+  }, [freshStations, stationExtent, mode])
 
   // Changing the scale changes every distance, so start again from the home view.
   useEffect(() => {
@@ -532,6 +600,7 @@ export function Map3D({ dataset, mask, stations, hovered, selected, onHover, onS
 
   return (
     <div
+      data-map-root=""
       className="relative h-full w-full overflow-hidden rounded-md bg-[#070707] focus-visible:outline-offset-[-2px]"
       tabIndex={0}
       role="img"
@@ -553,7 +622,8 @@ export function Map3D({ dataset, mask, stations, hovered, selected, onHover, onS
               .map((s) => (
                 <Markers key={s.label} positions={positions} indices={s.suppliers} size={15} ring color={s.color} />
               ))}
-            <StationMarkers stations={stations} mode={mode} />
+            <SupplierLinks stations={stations} positions={positions} mode={mode} />
+            <PinProjector points={pinPoints} pins={pinRefs} />
             <Markers positions={positions} indices={hoverSelected} size={8} ring={false} />
             <Picker positions={positions} onHover={handlers.hover} onSelect={handlers.select} />
           </>
@@ -564,7 +634,7 @@ export function Map3D({ dataset, mask, stations, hovered, selected, onHover, onS
           <meshBasicMaterial color="white" />
         </mesh>
         <OrbitControls makeDefault enableDamping dampingFactor={0.12} zoomToCursor minDistance={0.02} maxDistance={80} />
-        <Rig mode={mode} rigRef={rigRef} />
+        <Rig mode={mode} extent={stationExtent} rigRef={rigRef} />
       </Canvas>
 
       {tooltipLabel && tooltip && (
@@ -586,6 +656,23 @@ export function Map3D({ dataset, mask, stations, hovered, selected, onHover, onS
         Sun-centred · ecliptic · {mode === 'compressed' ? 'distance shown as √r' : 'true distance (au)'}
       </p>
       <StationKey stations={stations} className="top-11 max-w-[calc(100%-1.5rem)] sm:top-8 sm:max-w-[calc(100%-12rem)]" />
+      {stations.map((s, k) => (
+        <div
+          key={s.label}
+          ref={(el) => {
+            pinRefs.current[k] = el
+          }}
+          className="absolute top-0 left-0 z-10"
+          style={{ visibility: 'hidden' }}
+        >
+          <StationPin
+            station={s}
+            fresh={freshStations}
+            onHover={(on) => onStationHover(on ? k : -1)}
+            onClick={() => onStationClick(k)}
+          />
+        </div>
+      ))}
 
       <div className="absolute top-2 right-2 inline-flex gap-1 rounded-md bg-[#070707]/80 p-1" role="group" aria-label="Distance scale">
         {(['compressed', 'linear'] as const).map((m) => (

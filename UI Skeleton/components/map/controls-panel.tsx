@@ -7,7 +7,7 @@ import { classGroupKey, type AsteroidFilters } from '@/lib/asteroids/filters'
 import { CATEGORIES, CATEGORY_IDS, candidateCategories, classColor, type CategoryId } from '@/lib/asteroids/class-colors'
 import { REGIONS } from '@/lib/asteroids/regions'
 import type { ProductEntry } from '@/lib/stations/product-supply'
-import { REACH_LIMITS, STATION_LIMITS, type PlanSettings } from '@/lib/stations/settings'
+import { REACH_LIMITS, STATION_LIMITS, TRIP_LIMITS, type PlanSettings } from '@/lib/stations/settings'
 import { RangeField, ValueField } from './range-field'
 
 const formatDiameter = (log: number) => {
@@ -218,16 +218,32 @@ export function ControlsPanel({
           <ValueField
             id="station-reach"
             label="Reach"
-            value={plan.reachKmS}
+            value={plan.reachHours}
             min={REACH_LIMITS.min}
             max={REACH_LIMITS.max}
             step={REACH_LIMITS.step}
-            format={(v) => `${v.toFixed(2)} km/s`}
-            onChange={(v) => setPlan('reachKmS', v)}
+            format={(v) => `${v} hours`}
+            onChange={(v) => setPlan('reachHours', v)}
           />
           <p className="text-[11px] leading-relaxed text-muted-foreground">
-            Orbit-change budget at which a station still draws on an asteroid. Wider reach pools more supply but makes
-            stations compete for the same bodies.
+            Estimated one-way maneuver time at which a station still draws on an asteroid, assuming constant 0.01 m/s²
+            acceleration. Wider reach pools more supply.
+          </p>
+        </div>
+        <div className="flex flex-col gap-2">
+          <ValueField
+            id="station-trip"
+            label="Trip time"
+            value={plan.tripYears}
+            min={TRIP_LIMITS.min}
+            max={TRIP_LIMITS.max}
+            step={TRIP_LIMITS.step}
+            format={(v) => `${v} year${v === 1 ? '' : 's'}`}
+            onChange={(v) => setPlan('tripYears', v)}
+          />
+          <p className="text-[11px] leading-relaxed text-muted-foreground">
+            Time a tug may take to drift along the orbit to an asteroid ahead of or behind the station. Shorter trips
+            make catching up cost more, so suppliers cluster around the station.
           </p>
         </div>
       </section>

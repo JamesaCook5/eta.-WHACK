@@ -115,15 +115,17 @@ export function prepareProblem(
 
   const n = rows.length
   const x = new Float32Array(n * 3)
+  const phase = new Float32Array(n)
   const supply = new Float32Array(n * E)
   const tonnes = Float32Array.from(rawTonnes)
   rows.forEach((k, j) => {
     x.set(toDeltaV(dataset.a[k], dataset.e[k], dataset.inclination[k]), j * 3)
+    phase[j] = Math.atan2(dataset.positions3[k * 3 + 1], dataset.positions3[k * 3])
     for (let e = 0; e < E; e++) supply[j * E + e] = totals[e] > 0 ? rawSupply[j * E + e] / totals[e] : 0
   })
 
   return {
-    problem: { elements: ids, n, x, supply, tonnes, index: Int32Array.from(rows) },
+    problem: { elements: ids, n, x, phase, supply, tonnes, index: Int32Array.from(rows) },
     elements: ids.map((id, e) => ({
       id,
       label: labels.get(id) ?? id,

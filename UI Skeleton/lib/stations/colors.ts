@@ -16,25 +16,21 @@ export interface StationOverlay {
   color: string
   /** Semi-major axis of the station's orbit, au (drawn as a ring in the ecliptic). */
   a: number
-  /** Dataset indices of its main suppliers (ringed in the station's colour). */
-  suppliers: number[]
-  /** Semi-major axes (au) within one reach of the station: drawn as a faint band. */
-  band: [number, number]
+  /** Where the station is at the dataset epoch: heliocentric ecliptic au, on its ring. */
+  position: [number, number, number]
   /**
-   * Where the station marker is drawn, heliocentric ecliptic au. The plan fixes
-   * a, e and i but not where along the orbit the station is, so the marker sits
-   * on the ring beside the station's largest supplier.
+   * One-reach zone: the semi-major axes and longitudes (radians) a station can
+   * reach for Δv ≤ its reach. Drawn as a shaded sector around the station.
    */
-  marker: [number, number, number]
+  zone: { aMin: number; aMax: number; start: number; end: number }
+  /** Dataset indices of its main suppliers (ringed in the station's colour, linked to the station). */
+  suppliers: number[]
   /** Another station is in focus: draw this one faded, without its suppliers. */
   dim: boolean
-}
-
-const V_EARTH_KMS = 29.78
-
-/** a-range within reach λ (km/s) of a circular orbit at a, using the δa/a term of the Δv metric. */
-export function reachBand(a: number, reachKmS: number): [number, number] {
-  const v = V_EARTH_KMS / Math.sqrt(a)
-  const d = reachKmS / (v * Math.sqrt(1.25))
-  return [a * Math.exp(-d), a * Math.exp(d)]
+  /** True for the station in focus (hovered or pinned). */
+  active: boolean
+  /** Focus is held by a click (until clicked again). */
+  pinned: boolean
+  /** Hover card: a title line and short detail lines. */
+  info: { title: string; lines: string[] }
 }

@@ -35,7 +35,7 @@ export function useStationPlan(problem: StationProblem | null, params: PlanParam
     [],
   )
 
-  const { stations, reachKmS } = params
+  const { stations, reachHours, tripYears } = params
   useEffect(() => {
     if (!problem || !key) {
       setState((s) => ({ ...s, status: 'idle' }))
@@ -73,7 +73,7 @@ export function useStationPlan(problem: StationProblem | null, params: PlanParam
         // No worker support: run here, after the "running" state has painted.
         window.setTimeout(() => {
           try {
-            finish(optimiseStations(problem, { stations, reachKmS }), null)
+            finish(optimiseStations(problem, { stations, reachHours, tripYears }), null)
           } catch (err) {
             finish(null, err instanceof Error ? err.message : String(err))
           }
@@ -90,17 +90,17 @@ export function useStationPlan(problem: StationProblem | null, params: PlanParam
         workerRef.current = null
         // Retry on the main thread.
         try {
-          finish(optimiseStations(problem, { stations, reachKmS }), null)
+            finish(optimiseStations(problem, { stations, reachHours, tripYears }), null)
         } catch (err) {
           finish(null, err instanceof Error ? err.message : String(err))
         }
       }
       busyRef.current = true
-      worker.postMessage({ id, problem, params: { stations, reachKmS } })
+      worker.postMessage({ id, problem, params: { stations, reachHours, tripYears } })
     }, DEBOUNCE_MS)
 
     return () => window.clearTimeout(timer)
-  }, [problem, stations, reachKmS, key])
+  }, [problem, stations, reachHours, tripYears, key])
 
   return state
 }

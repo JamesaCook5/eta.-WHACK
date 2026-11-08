@@ -2,7 +2,7 @@
 
 import { useEffect, useMemo, useRef, useState } from 'react'
 import type { AsteroidDataset } from '@/lib/asteroids/types'
-import { AsteroidRenderer, type MapMarker, type MapView, type OrbitLine, type RingGroup } from '@/lib/asteroids/renderer'
+import { AsteroidRenderer, type MapView, type OrbitLine, type RingGroup } from '@/lib/asteroids/renderer'
 import { SpatialIndex } from '@/lib/asteroids/spatial-index'
 import { PLANET_ORBITS, orbitPolyline } from '@/lib/mission/bodies'
 import { asteroidLabel } from '@/lib/asteroids/label'
@@ -10,6 +10,7 @@ import { hexToRgb01, type StationOverlay } from '@/lib/stations/colors'
 import { buildColorBuffer } from '@/lib/asteroids/class-colors'
 import { MapLegend } from './map-legend'
 import { StationKey } from './station-key'
+import { StationPin } from './station-pin'
 
 const MIN_SCALE = 15
 const MAX_SCALE = 40000
@@ -29,11 +30,11 @@ function circle(a: number, segments: number) {
   return points
 }
 
-/** Annulus between radii r0 and r1 as a triangle strip. */
-function annulus(r0: number, r1: number, segments: number) {
+/** Annular sector between radii r0, r1 and angles t0 → t1 (radians) as a triangle strip. */
+function sector(r0: number, r1: number, t0: number, t1: number, segments: number) {
   const points = new Float32Array((segments + 1) * 4)
   for (let s = 0; s <= segments; s++) {
-    const t = (s / segments) * Math.PI * 2
+    const t = t0 + ((t1 - t0) * s) / segments
     const c = Math.cos(t), sn = Math.sin(t)
     points.set([r0 * c, r0 * sn, r1 * c, r1 * sn], s * 4)
   }
@@ -45,8 +46,12 @@ const pointSize = (scale: number) => Math.min(7, Math.max(2, 2 * Math.pow(scale 
 interface MapCanvasProps {
   dataset: AsteroidDataset | null
   mask: Uint8Array | null
-  /** Planned stations: orbit rings plus their suppliers ringed in the station's colour. */
+  /** Planned stations: position, orbit ring, reach zone and suppliers. */
   stations: StationOverlay[]
+  /** Pulse the station markers (a new plan just arrived). */
+  freshStations: boolean
+  onStationHover: (k: number) => void
+  onStationClick: (k: number) => void
   hovered: number
   selected: number
   onHover: (index: number) => void
@@ -58,6 +63,9 @@ export function MapCanvas({
   dataset,
   mask,
   stations,
+  freshStations,
+  onStationHover,
+  onStationClick,
   hovered,
   selected,
   onHover,
@@ -85,12 +93,29 @@ export function MapCanvas({
   const indexRef = useRef(index)
   indexRef.current = index
 
+  // Station pins are DOM elements over the canvas; move them with the view.
+  const pinRefs = useRef<(HTMLDivElement | null)[]>([])
+  const stationsRef = useRef(stations)
+  stationsRef.current = stations
+  const placePins = () => {
+    const { w, h } = sizeRef.current
+    const v = viewRef.current
+    stationsRef.current.forEach((s, k) => {
+      const el = pinRefs.current[k]
+      if (!el) return
+      const sx = w / 2 + (s.position[0] - v.cx) * v.scale
+      const sy = h / 2 - (s.position[1] - v.cy) * v.scale
+      el.style.transform = `translate(${sx}px, ${sy}px)`
+    })
+  }
+
   const requestDraw = () => {
     if (frameRef.current) return
     frameRef.current = requestAnimationFrame(() => {
       frameRef.current = 0
       const view = viewRef.current
       rendererRef.current?.draw(view, pointSize(view.scale))
+      placePins()
     })
   }
 
@@ -130,11 +155,12 @@ export function MapCanvas({
       const rect = canvas.getBoundingClientRect()
       zoomAt(event.clientX - rect.left, event.clientY - rect.top, Math.exp(-event.deltaY * 0.0015))
     }
-    canvas.addEventListener('wheel', onWheel, { passive: false })
+    // On the container so scrolling over a station pin still zooms the map.
+    container.addEventListener('wheel', onWheel, { passive: false })
 
     return () => {
       observer.disconnect()
-      canvas.removeEventListener('wheel', onWheel)
+      container.removeEventListener('wheel', onWheel)
       cancelAnimationFrame(frameRef.current)
       frameRef.current = 0
       renderer.dispose()
@@ -173,27 +199,53 @@ export function MapCanvas({
     const lines: OrbitLine[] = [
       { points: orbitPolyline(PLANET_ORBITS.earth), color: PLANET_ORBIT_COLOR },
       { points: orbitPolyline(PLANET_ORBITS.mars), color: PLANET_ORBIT_COLOR },
-      // Reach band (a-range within one reach), then the orbit as a dotted ring on top of the asteroids.
+      // Reach zone under the asteroids, then the orbit (dotted) and links to suppliers on top.
       ...stations
         .filter((s) => !s.dim)
         .map((s) => ({
-          points: annulus(s.band[0], s.band[1], 180),
-          color: [...hexToRgb01(s.color), stations.some((o) => o.dim) ? 0.16 : 0.09] as OrbitLine['color'],
+          points: sector(s.zone.aMin, s.zone.aMax, s.zone.start, s.zone.end, 48),
+          color: [...hexToRgb01(s.color), s.active ? 0.24 : 0.16] as OrbitLine['color'],
           band: true,
         })),
       ...stations.map((s) => ({
         points: circle(s.a, Math.round(90 + s.a * 40)),
-        color: [...hexToRgb01(s.color), s.dim ? 0.22 : 1] as OrbitLine['color'],
-        dotSize: s.dim ? 2.5 : 3.5,
+        color: [...hexToRgb01(s.color), s.dim ? 0.15 : 0.55] as OrbitLine['color'],
+        dotSize: s.dim ? 2 : 2.5,
       })),
+      ...(dataset
+        ? stations
+            .filter((s) => !s.dim)
+            .map((s) => {
+              const pts = new Float32Array(s.suppliers.length * 4)
+              s.suppliers.forEach((idx, i) =>
+                pts.set([s.position[0], s.position[1], dataset.positions[idx * 2], dataset.positions[idx * 2 + 1]], i * 4),
+              )
+              return { points: pts, color: [...hexToRgb01(s.color), 0.7] as OrbitLine['color'], segments: true }
+            })
+        : []),
     ]
     rendererRef.current?.setOrbits(lines)
-    rendererRef.current?.setMarkers(
-      stations.map<MapMarker>((s) => ({ x: s.marker[0], y: s.marker[1], color: hexToRgb01(s.color), alpha: s.dim ? 0.35 : 1 })),
-    )
     requestDraw()
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [stations])
+  }, [stations, dataset])
+
+  // When a new plan arrives, zoom out if any station or its reach zone is off screen.
+  useEffect(() => {
+    if (!freshStations || stationsRef.current.length === 0) return
+    const { w, h } = sizeRef.current
+    const v = viewRef.current
+    const off = stationsRef.current.some((s) => {
+      const r = s.zone.aMax
+      const sx = w / 2 + (s.position[0] - v.cx) * v.scale
+      const sy = h / 2 - (s.position[1] - v.cy) * v.scale
+      return sx < 24 || sy < 48 || sx > w - 24 || sy > h - 48 || r * v.scale > Math.max(w, h) * 2
+    })
+    if (!off) return
+    const rMax = Math.max(FIT_RADIUS_AU, ...stationsRef.current.map((s) => Math.hypot(s.position[0], s.position[1]) * 1.12))
+    viewRef.current = { cx: 0, cy: 0, scale: Math.min(w, h) / 2 / rMax }
+    requestDraw()
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [freshStations])
 
   function toWorld(sx: number, sy: number) {
     const { w, h } = sizeRef.current
@@ -309,7 +361,7 @@ export function MapCanvas({
   const tooltipLabel = dataset && hovered >= 0 && tooltip ? asteroidLabel(dataset, hovered) : null
 
   return (
-    <div ref={containerRef} className="relative h-full w-full overflow-hidden rounded-md bg-[#070707]">
+    <div ref={containerRef} data-map-root="" className="relative h-full w-full overflow-hidden rounded-md bg-[#070707]">
       <canvas
         ref={canvasRef}
         tabIndex={0}
@@ -362,9 +414,26 @@ export function MapCanvas({
       </div>
       {dataset && <MapLegend dataset={dataset} />}
       <p className="pointer-events-none absolute top-3 left-3 max-w-[calc(100%-1.5rem)] truncate font-mono text-[11px] text-white/55">
-        Sun-centred · x–y plane · au{stations.length > 0 && ' · dotted ring: station orbit · band: its reach'}
+        Sun-centred · x–y plane · au{stations.length > 0 && ' · shaded: each station’s reach · lines: its main suppliers'}
       </p>
       <StationKey stations={stations} />
+      {stations.map((s, k) => (
+        <div
+          key={s.label}
+          ref={(el) => {
+            pinRefs.current[k] = el
+            if (el) placePins()
+          }}
+          className="absolute top-0 left-0 z-10"
+        >
+          <StationPin
+            station={s}
+            fresh={freshStations}
+            onHover={(on) => onStationHover(on ? k : -1)}
+            onClick={() => onStationClick(k)}
+          />
+        </div>
+      ))}
     </div>
   )
 }
