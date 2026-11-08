@@ -185,11 +185,11 @@ function Placement() {
         relative transfer difficulty; it is not a time-dependent Lambert transfer or an exact Δv calculation.
       </p>
       <p>
-        We use a weighted multi-source Weber method with Weiszfeld updates. Each source belongs to its nearest station
-        in the proxy, and the station moves to the weighted geometric median of its assigned sources. This minimizes
-        total weighted distance in the proxy, not actual mission Δv. The median is then converted to a candidate orbit
-        for a free-flying station. Since phase and orbit size are coupled for a real orbit, that conversion is also an
-        approximation to the constrained optimum.
+        We use weighted k-means with several weighted k-means++ starts. Each source belongs to its nearest station in
+        the proxy, and the station moves to the weighted mean of its assigned sources. This minimizes squared weighted
+        distance in the proxy, not actual mission Δv. The center is then converted to a candidate orbit for a free-flying
+        station. Since phase and orbit size are coupled for a real orbit, that conversion is also an approximation to the
+        constrained optimum.
       </p>
       <h3>Why more stations help</h3>
       <p>

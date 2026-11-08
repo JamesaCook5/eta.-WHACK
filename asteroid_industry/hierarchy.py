@@ -5,11 +5,10 @@ should we mine for this product's elements?"  This module answers the next
 question: given a product whose manufacture needs intermediates, where should
 each stage of the production network sit?
 
-The model uses the same five-dimensional orbital proxy as the single-tier
-planner. Straight-line distance in that embedding estimates relative transfer
-difficulty; weighted geometric medians minimize the sum of those proxy distances.
-This is not a time-dependent delta-v calculation. No Lambert solver, launch
-windows or propulsion model is used.
+The model uses the same five-dimensional orbital proxy and weighted k-means
+objective as the single-tier planner. Distance in that embedding estimates
+relative transfer difficulty; it is not a time-dependent delta-v calculation.
+No Lambert solver, launch windows or propulsion model is used.
 
 Pipeline
 --------
@@ -20,7 +19,7 @@ Pipeline
    null.
 2. Place tier-0 mining/feedstock stations from the asteroid table.
 3. Walk the recipe tree bottom-up.  For every process node, gather the outputs
-   of its child stations as weighted points and run the same weighted Weber solve.
+   of its child stations as weighted points and run the same weighted k-means.
    The parent station sits at the weighted centre of its inputs.
 4. Return the production tree and station list.
 
@@ -52,9 +51,9 @@ from .stations import (
     TOP_MEMBERS,
     V_EARTH_KMS,
     StationPlanner,
-    _weber_cost,
-    _weber_pp,
-    _weber,
+    _inertia,
+    _kmeans_pp,
+    _lloyd,
     _wrap,
 )
 
@@ -154,6 +153,7 @@ class RecipeNode:
             "tier": self.tier,
             "is_raw": self.is_raw,
             "is_external": self.is_external,
+            "quantities_inferred": bool(self.recipe and self.recipe.quantities_inferred),
             "group": self.group,
             "facility": self.facility,
             "inputs": {child.material: child.demand for child in self.children},
@@ -457,7 +457,7 @@ class SourcePoint:
 
 
 class HierarchicalPlanner:
-    """Recursive weighted geometric-median station placement along the manufacturing DAG."""
+    """Recursive weighted k-means station placement along the manufacturing DAG."""
 
     def __init__(self, planner: StationPlanner, recipes: RecipeGraph):
         self.planner = planner
@@ -582,12 +582,12 @@ class HierarchicalPlanner:
 
         best, best_i, iterations = None, math.inf, 0
         for _ in range(RESTARTS):
-            C, labels, it = _weber(X, w, _weber_pp(X, w, k, rng), MAX_ITER)
+            C, labels, it = _lloyd(X, w, _kmeans_pp(X, w, k, rng), MAX_ITER)
             iterations += it
-            cost = _weber_cost(X, w, labels, C)
-            if cost < best_i:
-                best, best_i = C, cost
-        C, labels, it = _weber(X, w, best, MAX_ITER)
+            inertia = _inertia(X, w, labels, C)
+            if inertia < best_i:
+                best, best_i = C, inertia
+        C, labels, it = _lloyd(X, w, best, MAX_ITER)
         iterations += it
 
         held = np.bincount(labels, weights=w, minlength=k)
@@ -724,24 +724,34 @@ class HierarchicalPlanner:
             for name, quantity in recipe.inputs.items()
             if name in local_names and quantity > 0
         }
+        capacities: list[float] = []
         for station in stations:
-            inputs = {
-                name: min(value, node.demand * recipe.inputs.get(name, 0.0) / 1000.0)
-                for name, value in station["output"].items()
-                if name in recipe.inputs
-            }
             if local_inputs:
                 capacity_kg = min(
-                    inputs.get(name, 0.0) * 1000.0 / quantity
+                    station["output"].get(name, 0.0) * 1000.0 / quantity
                     for name, quantity in local_inputs.items()
                 )
             else:
-                capacity_kg = node.demand
-            station["inputs"] = inputs
+                capacity_kg = node.demand * float(station.get("share", 0.0))
+            capacities.append(max(0.0, capacity_kg))
+
+        # Every node represents one total demand, shared by its facilities. A
+        # per-station cap alone duplicated that demand once for every cluster.
+        total_capacity = sum(capacities)
+        scale = min(1.0, node.demand / total_capacity) if total_capacity > 0 else 0.0
+        allocated = [capacity * scale for capacity in capacities]
+        produced = sum(allocated)
+        for station, capacity_kg in zip(stations, allocated):
+            station["inputs"] = {
+                name: capacity_kg * quantity / 1000.0
+                for name, quantity in recipe.inputs.items()
+                if quantity > 0
+            }
             station["output"] = {
                 name: capacity_kg * quantity / 1000.0
                 for name, quantity in recipe.outputs.items()
             }
+            station["share"] = capacity_kg / produced if produced > 0 else 0.0
 
     # ------------------------------------------------------------------- main
     def plan(
@@ -851,9 +861,17 @@ class HierarchicalPlanner:
                 for source_id in source_ids
                 if source_id in station_index_by_id
             ]
+        produced_kg = sum(station["output"].get(root.material, 0.0) * 1000.0 for station in root.stations)
+        inferred_quantities = any(node.recipe and node.recipe.quantities_inferred for node in _walk(root))
         return {
             "product": product_id,
             "productLabel": self.recipes.product_catalogue.get(product_id, {}).get("label", product_id),
+            "production": {
+                "demandKg": float(root.demand),
+                "availableKg": float(produced_kg),
+                "coverage": min(1.0, produced_kg / root.demand) if root.demand > 0 else 1.0,
+            },
+            "quantitiesInferred": inferred_quantities,
             "tree": root.to_dict(),
             "tiers": tiers,
             "stations": stations,

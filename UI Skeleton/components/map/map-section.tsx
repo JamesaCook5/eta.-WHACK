@@ -30,7 +30,7 @@ import { useStationPlan } from '@/lib/stations/use-station-plan'
 import { hexToRgb01, stationColor, type StationOverlay } from '@/lib/stations/colors'
 
 const NO_STATIONS: StationOverlay[] = []
-/** Above this many stations, only mining stations and the focused one get map pins. */
+/** Above this many stations, retain a small set of mining pins plus the focused/pinned station. */
 const PIN_LIMIT = 60
 const RAW_STATION_COLOR = '#777777'
 
@@ -185,7 +185,9 @@ export function MapSection() {
     if (!planSettings.hierarchical || !hierarchyResult) return null
     const n = hierarchyResult.stations.length
     if (n <= PIN_LIMIT) return null
-    const keep = new Set(miningStations)
+    // Mining stations are ordered by supply held, so the most useful are shown
+    // first; every omitted station remains searchable in the hierarchy panel.
+    const keep = new Set(miningStations.slice(0, PIN_LIMIT - 2))
     if (focusStation >= 0) keep.add(focusStation)
     if (pinnedStation >= 0 && pinnedStation < n) keep.add(pinnedStation)
     return [...keep].sort((x, y) => x - y)

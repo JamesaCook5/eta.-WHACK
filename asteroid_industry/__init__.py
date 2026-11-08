@@ -8,7 +8,7 @@ AsteroidCatalog        Adapter for the project's parquet dataset.
 Process, ProcessGraph  Unit-operation DAG with material and equipment flows.
 IndustrialModel        Forward material-flow simulation and backward demand.
 IndustrialSystem       High-level: asteroid -> feedstock inventory -> products.
-StationPlanner         Weighted geometric-median station placement per product,
+StationPlanner         Weighted k-means station placement per product,
                        with composition-only Monte Carlo ranges (served by .api).
 HierarchicalPlanner    Recursive tiered station placement over the manufacturing
                        DAG, with fallback process quantities and route selection.

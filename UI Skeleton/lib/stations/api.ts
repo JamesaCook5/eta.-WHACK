@@ -98,15 +98,41 @@ export interface HierarchyStation {
   a: number; e: number; i: number; longitude: number; members: number; share: number;
   output: Record<string, number>; inputs?: Record<string, number>;
   /** Indices of the upstream stations supplying this station's inputs. */
-  sourceStations?: number[];
+  sourceStations: number[];
 }
-export interface HierarchyResult { product: string; productLabel: string; stations: HierarchyStation[]; asteroidAssignment: Uint8Array; ms: number; tripYears: number }
+export interface HierarchyResult {
+  product: string
+  productLabel: string
+  stations: HierarchyStation[]
+  asteroidAssignment: Uint8Array
+  production: { demandKg: number; availableKg: number; coverage: number }
+  quantitiesInferred: boolean
+  ms: number
+  tripYears: number
+}
 
 export async function requestHierarchy(req: Omit<PlanRequest, 'draws'>, signal: AbortSignal): Promise<HierarchyResult> {
   const res = await fetch(`${PLANNER_URL}/plan/hierarchy`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(req), signal })
   if (!res.ok) throw new Error(`Hierarchy planner failed (${res.status}): ${await res.text()}`)
   const raw = await res.json()
-  return { ...raw, asteroidAssignment: fromBase64(raw.asteroidAssignment) }
+  const stations = Array.isArray(raw.stations) ? raw.stations as HierarchyStation[] : []
+  const normalizedStations = stations.map((station, index) => ({
+    ...station,
+    sourceStations: Array.isArray(station.sourceStations)
+      ? [...new Set(station.sourceStations)].filter((source) =>
+          Number.isInteger(source) &&
+          source >= 0 &&
+          source < stations.length &&
+          source !== index &&
+          stations[source].tier < station.tier,
+        )
+      : [],
+  }))
+  return {
+    ...raw,
+    stations: normalizedStations,
+    asteroidAssignment: fromBase64(raw.asteroidAssignment),
+  }
 }
 
 const fromBase64 = (text: string) => {
