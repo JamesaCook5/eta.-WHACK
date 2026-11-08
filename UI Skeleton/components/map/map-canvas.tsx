@@ -17,6 +17,7 @@ const MAX_SCALE = 40000
 const FIT_RADIUS_AU = 3.8
 const PICK_RADIUS_PX = 8
 
+const NO_RINGS: RingGroup[] = []
 const PLANET_ORBIT_COLOR: OrbitLine['color'] = [1, 1, 1, 0.4]
 
 /** Circle of radius a (au) in the ecliptic. */
@@ -30,24 +31,15 @@ function circle(a: number, segments: number) {
   return points
 }
 
-/** Annular sector between radii r0, r1 and angles t0 → t1 (radians) as a triangle strip. */
-function sector(r0: number, r1: number, t0: number, t1: number, segments: number) {
-  const points = new Float32Array((segments + 1) * 4)
-  for (let s = 0; s <= segments; s++) {
-    const t = t0 + ((t1 - t0) * s) / segments
-    const c = Math.cos(t), sn = Math.sin(t)
-    points.set([r0 * c, r0 * sn, r1 * c, r1 * sn], s * 4)
-  }
-  return points
-}
-
 const pointSize = (scale: number) => Math.min(7, Math.max(2, 2 * Math.pow(scale / 120, 0.35)))
 
 interface MapCanvasProps {
   dataset: AsteroidDataset | null
   mask: Uint8Array | null
-  /** Planned stations: position, orbit ring, reach zone and suppliers. */
+  /** Planned stations: position, orbit ring and Monte Carlo positions. */
   stations: StationOverlay[]
+  /** Per-asteroid RGB override (e.g. coloured by station); null for composition colours. */
+  colors: Uint8Array | null
   /** Pulse the station markers (a new plan just arrived). */
   freshStations: boolean
   onStationHover: (k: number) => void
@@ -63,6 +55,7 @@ export function MapCanvas({
   dataset,
   mask,
   stations,
+  colors,
   freshStations,
   onStationHover,
   onStationClick,
@@ -184,50 +177,37 @@ export function MapCanvas({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [mask, dataset])
 
-  const ringGroups = useMemo<RingGroup[]>(
-    () => stations.filter((s) => !s.dim).map((s) => ({ indices: s.suppliers, color: hexToRgb01(s.color) })),
-    [stations],
-  )
-
   useEffect(() => {
-    rendererRef.current?.setHighlights(ringGroups, hovered, selected)
+    if (!dataset || !rendererRef.current) return
+    rendererRef.current.setColors(colors ?? buildColorBuffer(dataset))
     requestDraw()
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [ringGroups, hovered, selected, dataset])
+  }, [colors, dataset])
+
+  useEffect(() => {
+    rendererRef.current?.setHighlights(NO_RINGS, hovered, selected)
+    requestDraw()
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [hovered, selected, dataset])
 
   useEffect(() => {
     const lines: OrbitLine[] = [
       { points: orbitPolyline(PLANET_ORBITS.earth), color: PLANET_ORBIT_COLOR },
       { points: orbitPolyline(PLANET_ORBITS.mars), color: PLANET_ORBIT_COLOR },
-      // Reach zone under the asteroids, then the orbit (dotted) and links to suppliers on top.
-      ...stations
-        .filter((s) => !s.dim)
-        .map((s) => ({
-          points: sector(s.zone.aMin, s.zone.aMax, s.zone.start, s.zone.end, 48),
-          color: [...hexToRgb01(s.color), s.active ? 0.24 : 0.16] as OrbitLine['color'],
-          band: true,
-        })),
+      // Station orbit (dotted), then where the station landed in each Monte Carlo draw.
       ...stations.map((s) => ({
         points: circle(s.a, Math.round(90 + s.a * 40)),
-        color: [...hexToRgb01(s.color), s.dim ? 0.15 : 0.55] as OrbitLine['color'],
+        color: [...hexToRgb01(s.color), s.dim ? 0.15 : 0.5] as OrbitLine['color'],
         dotSize: s.dim ? 2 : 2.5,
       })),
-      ...(dataset
-        ? stations
-            .filter((s) => !s.dim)
-            .map((s) => {
-              const pts = new Float32Array(s.suppliers.length * 4)
-              s.suppliers.forEach((idx, i) =>
-                pts.set([s.position[0], s.position[1], dataset.positions[idx * 2], dataset.positions[idx * 2 + 1]], i * 4),
-              )
-              return { points: pts, color: [...hexToRgb01(s.color), 0.7] as OrbitLine['color'], segments: true }
-            })
-        : []),
+      ...stations
+        .filter((s) => s.cloud && !s.dim)
+        .map((s) => ({ points: s.cloud!, color: [...hexToRgb01(s.color), 0.35] as OrbitLine['color'], dotSize: 2.5 })),
     ]
     rendererRef.current?.setOrbits(lines)
     requestDraw()
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [stations, dataset])
+  }, [stations])
 
   // When a new plan arrives, zoom out if any station or its reach zone is off screen.
   useEffect(() => {
@@ -235,7 +215,7 @@ export function MapCanvas({
     const { w, h } = sizeRef.current
     const v = viewRef.current
     const off = stationsRef.current.some((s) => {
-      const r = s.zone.aMax
+      const r = s.a
       const sx = w / 2 + (s.position[0] - v.cx) * v.scale
       const sy = h / 2 - (s.position[1] - v.cy) * v.scale
       return sx < 24 || sy < 48 || sx > w - 24 || sy > h - 48 || r * v.scale > Math.max(w, h) * 2
@@ -412,9 +392,9 @@ export function MapCanvas({
           </button>
         ))}
       </div>
-      {dataset && <MapLegend dataset={dataset} />}
+      {dataset && !colors && <MapLegend dataset={dataset} />}
       <p className="pointer-events-none absolute top-3 left-3 max-w-[calc(100%-1.5rem)] truncate font-mono text-[11px] text-white/55">
-        Sun-centred · x–y plane · au{stations.length > 0 && ' · shaded: each station’s reach · lines: its main suppliers'}
+        Sun-centred · x–y plane · au{stations.length > 0 && ' · asteroids coloured by station · faint dots: Monte Carlo positions'}
       </p>
       <StationKey stations={stations} />
       {stations.map((s, k) => (

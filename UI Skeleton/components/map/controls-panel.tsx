@@ -7,7 +7,7 @@ import { classGroupKey, type AsteroidFilters } from '@/lib/asteroids/filters'
 import { CATEGORIES, CATEGORY_IDS, candidateCategories, classColor, type CategoryId } from '@/lib/asteroids/class-colors'
 import { REGIONS } from '@/lib/asteroids/regions'
 import type { ProductEntry } from '@/lib/stations/product-supply'
-import { REACH_LIMITS, STATION_LIMITS, TRIP_LIMITS, type PlanSettings } from '@/lib/stations/settings'
+import { STATION_LIMITS, TRIP_LIMITS, type PlanSettings } from '@/lib/stations/settings'
 import { RangeField, ValueField } from './range-field'
 
 const formatDiameter = (log: number) => {
@@ -216,22 +216,6 @@ export function ControlsPanel({
         </div>
         <div className="flex flex-col gap-2">
           <ValueField
-            id="station-reach"
-            label="Reach"
-            value={plan.reachHours}
-            min={REACH_LIMITS.min}
-            max={REACH_LIMITS.max}
-            step={REACH_LIMITS.step}
-            format={(v) => `${v} hours`}
-            onChange={(v) => setPlan('reachHours', v)}
-          />
-          <p className="text-[11px] leading-relaxed text-muted-foreground">
-            Estimated one-way maneuver time at which a station still draws on an asteroid, assuming constant 0.01 m/s²
-            acceleration. Wider reach pools more supply.
-          </p>
-        </div>
-        <div className="flex flex-col gap-2">
-          <ValueField
             id="station-trip"
             label="Trip time"
             value={plan.tripYears}
@@ -242,10 +226,24 @@ export function ControlsPanel({
             onChange={(v) => setPlan('tripYears', v)}
           />
           <p className="text-[11px] leading-relaxed text-muted-foreground">
-            Time a tug may take to drift along the orbit to an asteroid ahead of or behind the station. Shorter trips
-            make catching up cost more, so suppliers cluster around the station.
+            Time a tug may take to drift along the orbit to an asteroid ahead of or behind its station. Shorter trips
+            make position along the orbit count more, so each station takes a tighter arc.
           </p>
         </div>
+        <label className="flex cursor-pointer items-start gap-2.5 text-sm text-white/80">
+          <input
+            type="checkbox"
+            checked={plan.includeOuter}
+            onChange={(e) => setPlan('includeOuter', e.target.checked)}
+            className="mt-0.5 size-4 accent-[var(--color-signal,#52cbff)]"
+          />
+          <span className="flex flex-col gap-0.5">
+            Include Centaurs and Kuiper belt
+            <span className="text-[11px] leading-relaxed text-muted-foreground">
+              About 20 bodies 6–70 au out. They are so far from the rest that k-means gives them stations of their own.
+            </span>
+          </span>
+        </label>
       </section>
 
       <section aria-labelledby="filters-label" className="flex flex-col gap-6">

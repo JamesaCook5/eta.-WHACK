@@ -25,9 +25,9 @@ import { SupplyPanel } from './supply-panel'
 import { estimateFeedstock, MATERIAL_SUPPLY_URL, loadMaterialSupply, type MaterialSupplyModel } from '@/lib/mission/material-supply'
 import { CATEGORY_IDS, categoryLabel } from '@/lib/asteroids/class-colors'
 import { PRODUCT_SUPPLY_URL, loadProductSupply, prepareProblem, type ProductSupplyModel } from '@/lib/stations/product-supply'
-import { DEFAULT_PLAN, type PlanSettings } from '@/lib/stations/settings'
+import { DEFAULT_PLAN, MONTE_CARLO_DRAWS, type PlanSettings } from '@/lib/stations/settings'
 import { useStationPlan } from '@/lib/stations/use-station-plan'
-import { stationColor, type StationOverlay } from '@/lib/stations/colors'
+import { hexToRgb01, stationColor, type StationOverlay } from '@/lib/stations/colors'
 
 const NO_STATIONS: StationOverlay[] = []
 
@@ -125,34 +125,43 @@ export function MapSection() {
   const prepared = useMemo(
     () =>
       dataset && productModel && product && mask && product.elements.length > 0
-        ? prepareProblem(dataset, productModel, product, mask)
+        ? prepareProblem(dataset, productModel, product, mask, planSettings.includeOuter)
         : null,
-    [dataset, productModel, product, mask],
+    [dataset, productModel, product, mask, planSettings.includeOuter],
   )
   const solvable = prepared !== null && prepared.elements.every((el) => el.carriers > 0)
   const plan = useStationPlan(
     solvable ? prepared.problem : null,
-    { stations: planSettings.stations, reachHours: planSettings.reachHours, tripYears: planSettings.tripYears },
+    { stations: planSettings.stations, tripYears: planSettings.tripYears, draws: MONTE_CARLO_DRAWS },
     solvable ? planSettings.productId : null,
   )
-  const planStale = plan.key !== planSettings.productId || !solvable
+  // The plan on screen must belong to the current problem (same rows), not an older filter set.
+  const planStale = !solvable || plan.problem !== prepared.problem || !plan.result
   const stationCount = !planStale && plan.result ? plan.result.stations.length : 0
   const focusStation = hoverStation >= 0 ? hoverStation : pinnedStation < stationCount ? pinnedStation : -1
   const stationOverlays = useMemo<StationOverlay[]>(() => {
-    if (planStale || !plan.result || !dataset || !prepared) return NO_STATIONS
+    if (planStale || !plan.result || !prepared) return NO_STATIONS
     const result = plan.result
+    const required = new Set(result.required)
     return result.stations.map((s, k) => {
       const lon = (s.longitude * Math.PI) / 180
-      const half = (s.zone.halfAngleDeg * Math.PI) / 180
-      const limiting = prepared.elements[s.bottleneck]?.label ?? '—'
-      const near = s.suppliers.filter((sp) => sp.dv <= result.reachKmS).length
+      const total = s.output.reduce((sum, v) => sum + v, 0)
+      const mix = s.output
+        .map((v, e) => ({ id: result.elements[e], v }))
+        .filter((x) => required.has(x.id))
+        .sort((p, q) => q.v - p.v)
+        .slice(0, 3)
+        .map((x) => `${prepared.labels[x.id] ?? x.id} ${total > 0 ? ((x.v / total) * 100).toFixed(1) : '0'}%`)
+        .join(' · ')
+      const cloud = result.cloud
+        ? Float32Array.from({ length: result.draws * 2 }, (_, i) => result.cloud![(Math.floor(i / 2) * result.stations.length + k) * 2 + (i % 2)])
+        : null
       return {
         label: `S${k + 1}`,
         color: stationColor(k),
         a: s.a,
         position: [s.a * Math.cos(lon), s.a * Math.sin(lon), 0] as [number, number, number],
-        zone: { aMin: s.zone.aMin, aMax: s.zone.aMax, start: lon - half, end: lon + half },
-        suppliers: s.suppliers.map((sp) => sp.index),
+        cloud,
         dim: focusStation >= 0 && focusStation !== k,
         active: focusStation === k,
         pinned: pinnedStation === k,
@@ -160,29 +169,31 @@ export function MapSection() {
           title: `S${k + 1} · ${product?.label ?? ''}`,
           lines: [
             `a ${s.a.toFixed(2)} au · e ${s.e.toFixed(2)} · i ${s.i.toFixed(1)}°`,
-            `Limited by ${limiting}: ${(s.shares[s.bottleneck] * 100).toFixed(1)}% of supply`,
-            `Reach zone ±${s.zone.halfAngleDeg.toFixed(0)}° along orbit, a ${s.zone.aMin.toFixed(2)}–${s.zone.aMax.toFixed(2)} au`,
-            `${near} of top ${s.suppliers.length} suppliers within ${result.reachKmS.toFixed(2)} km/s`,
+            `${s.members.toLocaleString()} asteroids · ${(s.share * 100).toFixed(1)}% of input tonnage`,
+            `Output: ${mix}`,
+            `Median Δv to its asteroids ${s.dvMedian.toFixed(2)} km/s`,
+            s.bunching < 0.3 ? 'Its asteroids spread all round the orbit' : `Bunching along the orbit ${s.bunching.toFixed(2)}`,
           ],
         },
       }
     })
-  }, [plan.result, planStale, dataset, prepared, product, focusStation, pinnedStation])
+  }, [plan.result, planStale, prepared, product, focusStation, pinnedStation])
   // Pulse the station pins for a few seconds whenever a new plan arrives.
   const [freshStations, setFreshStations] = useState(false)
+  const nominalResult = plan.status === 'sampling' ? plan.result : null
   useEffect(() => {
-    if (!plan.result) return
+    if (!nominalResult) return
     setFreshStations(true)
     const t = window.setTimeout(() => setFreshStations(false), 3200)
     return () => window.clearTimeout(t)
-  }, [plan.result])
+  }, [nominalResult])
   const onStationClick = useCallback((k: number) => setPinnedStation((cur) => (cur === k ? -1 : k)), [])
   const supplyRows = useMemo(
     () => (dataset && supplyModel ? estimateFeedstock(dataset, supplyModel, mineralId, mask) : []),
     [dataset, supplyModel, mineralId, mask],
   )
   // Supply layer: only bodies with an estimated feedstock for the chosen mineral stay bright.
-  // Station layer: only filtered bodies that carry one of the product's inputs stay bright.
+  // Station layer: every planned body stays bright; bodies left out of the plan fade.
   const mapMask = useMemo(() => {
     if (!dataset) return mask
     if (supplyMode) {
@@ -195,6 +206,30 @@ export function MapSection() {
     for (const k of prepared.problem.index) visible[k] = 1
     return visible
   }, [dataset, mask, supplyMode, supplyRows, prepared])
+  // Station layer colours: every asteroid in its station's colour (k-means splits them all).
+  // Bodies with none of the product's inputs, and ones that change station across the
+  // Monte Carlo draws, are drawn darker; other stations go grey while one is in focus.
+  const stationColors = useMemo(() => {
+    if (supplyMode || !dataset || planStale || !plan.result || !prepared) return null
+    const { assignment, stability } = plan.result
+    const rgb = plan.result.stations.map((_, k) => hexToRgb01(stationColor(k)).map((v) => v * 255))
+    const out = new Uint8Array(dataset.count * 3).fill(70)
+    const index = prepared.problem.index
+    for (let j = 0; j < index.length; j++) {
+      const k = assignment[j]
+      if (k === 255) continue
+      const o = index[j] * 3
+      if (focusStation >= 0 && k !== focusStation) {
+        out[o] = out[o + 1] = out[o + 2] = 85
+        continue
+      }
+      const f = (prepared.carries[j] ? 1 : 0.4) * (stability ? 0.45 + 0.55 * stability[j] : 1)
+      out[o] = rgb[k][0] * f
+      out[o + 1] = rgb[k][1] * f
+      out[o + 2] = rgb[k][2] * f
+    }
+    return out
+  }, [supplyMode, dataset, planStale, plan.result, prepared, focusStation])
   const mapStations = supplyMode ? NO_STATIONS : stationOverlays
   const visibleCount = useMemo(() => (mask ? mask.reduce((n, v) => n + v, 0) : 0), [mask])
 
@@ -244,7 +279,7 @@ export function MapSection() {
                 ? supplyMode
                   ? `${supplyRows.length.toLocaleString()} mapped ${supplyModel?.minerals[mineralId]?.label.toLowerCase() ?? 'feedstock'} bodies`
                   : prepared
-                    ? `${prepared.problem.n.toLocaleString()} of ${visibleCount.toLocaleString()} filtered bodies carry its inputs`
+                    ? `${prepared.problem.n.toLocaleString()} bodies split between ${planSettings.stations} station${planSettings.stations === 1 ? '' : 's'}`
                     : `${visibleCount.toLocaleString()} of ${dataset.count.toLocaleString()} match filters`
                 : 'No data'}
             </p>
@@ -321,6 +356,7 @@ export function MapSection() {
                   dataset={dataset ?? null}
                   mask={mapMask}
                   stations={mapStations}
+                  colors={stationColors}
                   freshStations={freshStations}
                   onStationHover={setHoverStation}
                   onStationClick={onStationClick}
@@ -335,6 +371,7 @@ export function MapSection() {
                   dataset={dataset ?? null}
                   mask={mapMask}
                   stations={mapStations}
+                  colors={stationColors}
                   freshStations={freshStations}
                   onStationHover={setHoverStation}
                   onStationClick={onStationClick}
@@ -368,6 +405,7 @@ export function MapSection() {
                 model={productModel ?? null}
                 product={product}
                 elements={prepared?.elements ?? []}
+                labels={prepared?.labels ?? {}}
                 plan={plan}
                 stale={planStale}
                 focusStation={focusStation}

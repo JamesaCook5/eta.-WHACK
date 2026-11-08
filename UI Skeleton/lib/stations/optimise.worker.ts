@@ -1,5 +1,6 @@
-/// Runs the station optimiser off the main thread.
-import { optimiseStations, type PlanParams, type StationProblem } from './optimise'
+/// Runs the station planner off the main thread, posting the k-means result
+/// first and the Monte Carlo ranges when the draws finish.
+import { planStations, type PlanParams, type StationProblem } from './optimise'
 
 interface Request {
   id: number
@@ -15,8 +16,8 @@ const scope = self as unknown as {
 scope.onmessage = (event) => {
   const { id, problem, params } = event.data
   try {
-    scope.postMessage({ id, result: optimiseStations(problem, params) })
+    planStations(problem, params, (message) => scope.postMessage({ id, ...message }))
   } catch (err) {
-    scope.postMessage({ id, error: err instanceof Error ? err.message : String(err) })
+    scope.postMessage({ id, kind: 'error', error: err instanceof Error ? err.message : String(err) })
   }
 }

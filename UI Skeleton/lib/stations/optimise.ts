@@ -1,80 +1,107 @@
 /**
- * Station placement for one product.
+ * Station placement for one product: weighted k-means, then a Monte Carlo
+ * over asteroid composition to see how much the answer depends on it.
  *
- * Model
- * - Stations sit in orbit space, not on asteroids. Distance between a station
- *   and an asteroid is the Zappalà-style velocity metric used for asteroid
- *   families: d = v·√(5/4 (δa/a)² + 2 δe² + 2 δ(sin i)²), with v the
- *   station's circular orbital speed. In the coordinates
- *   x = (√1.25 ln a, √2 e, √2 sin i) this is d = v·|x_j − y_k|.
- * - Stations also have a position along their orbit: a heliocentric
- *   longitude φ at the dataset epoch. Reaching an asteroid that is Δθ ahead
- *   or behind on a similar orbit takes a phasing manoeuvre: drop to a
- *   slightly different orbit, drift, return. Closing Δθ within a trip time T
- *   costs Δv_phase ≈ (2/3)·a·|Δθ| / T (two small Hohmann burns; the drift
- *   rate of a nearby orbit is (3/2)·n·δa/a). The cheapest way to an asteroid
- *   is then d = √(d_orbit² + Δv_phase²): orbit-shape change plus phasing.
- * - A station reaches an asteroid with weight K = exp(−d² / 2λ²). The UI's
- *   time reach is mapped to λ with a fixed acceleration assumption. Asteroid
- *   positions are a snapshot at the dataset epoch; their slow drift relative
- *   to the station is not modelled.
- * - Each asteroid's supply of element e, ŝ_je, is its share of the filtered
- *   set's supply (so every element sums to 1 across the map).
- * - Stations that reach the same asteroid split it: station k gets
- *   w_jk = K_jk / max(1, Σ_m K_jm).
- * - A station's output is limited by its scarcest input: production is the
- *   generalised mean with p = −6 of its shares c_ke = Σ_j w_jk ŝ_je, a smooth
- *   stand-in for min_e c_ke. The DAG has no quantities, so every input counts
- *   equally.
- * - Objective: total production F = Σ_k P_k.
+ * Space
+ * - Every filtered asteroid is a point in a velocity-like space, so squared
+ *   distance stands for the Δv² needed to get from a station to it:
+ *     x = (√1.25 ln a, √2 e, √2 sin i, q cos θ, q sin θ)
+ *   The first three are the Zappalà family metric (orbit size, shape, tilt,
+ *   in units of the orbital speed v). θ is the body's heliocentric longitude
+ *   now; catching up Δθ along an orbit within a trip time T costs about
+ *   (2/3)·a·Δθ / T, which in units of v is q·Δθ with q = (2/3)·P / (2π·T)
+ *   (P the orbital period). Points on a circle of radius q give that cost
+ *   for small Δθ and stay Euclidean, so plain k-means applies.
  *
- * Search
- * 1. Greedy seeding: from ~256 candidate positions (asteroids with high
- *    supply, taking their orbit and current longitude), add stations one at a time, each where its own production after
- *    splitting with the stations already placed is highest.
- * 2. Refinement: gradient steps on F, normalised like mean-shift, with the
- *    reach annealed from 2λ to λ so stations first see the broad structure.
- *    The gradient includes the competition term, so stations that share
- *    asteroids push apart. The best layout seen at the true λ is kept.
- * 3. Relocation (as in Teitz–Bart swap heuristics): move the weakest station
- *    to the best candidate given the others, refine, keep it if F rises.
+ * Clustering
+ * - Weight w_j = tonnes of the product's asteroid-sourced elements in body j
+ *   (mass × grade, bodies counted up to 100 km across).
+ * - Weighted k-means: every asteroid belongs to its nearest station (no
+ *   distance limit, no sharing; on an exact tie the later station takes it).
+ *   Each station sits at the w-weighted mean of its asteroids, i.e. where the
+ *   tonnage-weighted squared Δv to its asteroids is smallest.
+ * - k-means++ starts, several restarts, best (lowest weighted inertia) kept.
+ *
+ * Output
+ * - A station yields what its asteroids contain: for every element, Σ mass ×
+ *   grade over its members. 70% magnetite gives iron and oxygen in the
+ *   magnetite ratio; nothing is capped by the scarcest input.
+ *
+ * Monte Carlo
+ * - Each draw resamples every taxonomic type's mineral mix from a Dirichlet
+ *   around the lookup's values, wider for lower confidence (H/M/L/VL), and
+ *   the blend weights of mixed classes (e.g. CX = C + P). All asteroids of a
+ *   class share the draw: the uncertainty is in what the class is made of.
+ * - k-means is re-run per draw, warm-started from the nominal stations so
+ *   station k stays station k. Ranges are 5th–95th percentiles.
+ * - For speed the draws cluster a grid summary of the asteroids (cells in
+ *   a, e, i, longitude) instead of every body; positions don't change between
+ *   draws, only the cell weights do.
  */
 
-export interface StationProblem {
-  /** Element ids in the order used by `supply` and `tonnes`. */
+export interface SamplingModel {
+  /** Every tracked element id; outputs are reported for all of them. */
   elements: string[]
-  /** Number of asteroids that carry at least one required element. */
+  /** Indices into `elements` of the product's asteroid-sourced inputs. */
+  required: Int32Array
+  hIndex: number
+  waterIndex: number
+  hInWater: number
+  mineralCount: number
+  /** mineralCount × elements, mass fraction of each element in each mineral. */
+  mineralYield: Float32Array
+  typeCount: number
+  /** typeCount × mineralCount, nominal mineral mass fractions (rows sum to 1). */
+  typeMinerals: Float32Array
+  /** Dirichlet concentration per type (from its confidence grade). */
+  typeKappa: Float32Array
+  scenarioCount: number
+  /** scenarioCount × elements, nominal grade in kg per tonne. */
+  scenarioGrade: Float32Array
+  /** Per scenario: base types and blend weights; empty when it can't be resampled. */
+  scenarioBases: { types: number[]; weights: number[] }[]
+}
+
+export interface StationProblem {
   n: number
-  /** Interleaved Δv coordinates (√1.25 ln a, √2 e, √2 sin i). */
-  x: Float32Array
-  /** Heliocentric ecliptic longitude of each body at the dataset epoch, radians. */
-  phase: Float32Array
-  /** n × E, each element's column sums to 1 over the filtered set. */
-  supply: Float32Array
-  /** n × E, tonnes of each element in the body. */
-  tonnes: Float32Array
   /** Dataset index of each row. */
   index: Int32Array
+  /** Orbit coordinates (√1.25 ln a, √2 e, √2 sin i), interleaved. */
+  x: Float32Array
+  /** Semi-major axis, au. */
+  a: Float32Array
+  /** Heliocentric ecliptic longitude at the dataset epoch, radians. */
+  phase: Float32Array
+  /** Rock mass counted for mining, tonnes (bodies capped at 100 km across). */
+  mass: Float32Array
+  /** Index into the model's scenarios, −1 when the class is unknown. */
+  scenario: Int16Array
+  model: SamplingModel
 }
 
 export interface PlanParams {
   stations: number
-  /** Reach scale in estimated maneuver hours. */
-  reachHours: number
-  /** Time allowed for the phasing drift to an asteroid, years. */
+  /** Time allowed for a phasing drift along the orbit, years. */
   tripYears: number
+  /** Monte Carlo draws; 0 skips the Monte Carlo. */
+  draws: number
 }
 
-export interface Supplier {
+/** 5th percentile, median, 95th percentile. */
+export interface Range {
+  lo: number
+  mid: number
+  hi: number
+}
+
+export interface Member {
   /** Dataset index. */
   index: number
-  /** Fraction of the station's bottleneck-weighted intake from this body. */
-  share: number
-  /** Cheapest Δv to reach it (orbit change and phasing combined), km/s. */
+  /** Tonnes of the product's inputs in this body. */
+  tonnes: number
+  /** Δv from the station, km/s (orbit change and phasing). */
   dv: number
-  /** Of which phasing, km/s. */
-  dvPhase: number
-  /** How far ahead (+) or behind (−) of the station it is along the orbit, degrees. */
+  /** Ahead (+) or behind (−) the station along the orbit, degrees. */
   offsetDeg: number
 }
 
@@ -85,96 +112,72 @@ export interface PlannedStation {
   i: number
   /** Heliocentric ecliptic longitude at the dataset epoch, degrees. */
   longitude: number
-  /** One-reach (1σ) zone: semi-major axis range and half-width along the orbit. */
-  zone: { aMin: number; aMax: number; halfAngleDeg: number }
-  production: number
-  /** Per element: share of the filtered set's supply this station receives. */
-  shares: number[]
-  /** Per element: tonnes this station receives (after splitting). */
-  tonnes: number[]
-  /** Index into elements of the scarcest input. */
-  bottleneck: number
-  /** Fraction of this station's reachable supply that it shares with other stations. */
-  overlap: number
-  /** Fewest bodies that together give half the station's intake. */
-  bodies: number
-  suppliers: Supplier[]
+  /** Asteroids assigned to this station. */
+  members: number
+  /** Share of the product's input tonnage that this station's asteroids hold. */
+  share: number
+  /** Tonnes of every tracked element in its asteroids (index matches result.elements). */
+  output: number[]
+  /** Tonnage-weighted median Δv from the station to its asteroids, km/s. */
+  dvMedian: number
+  /**
+   * How bunched its asteroids are along the orbit, 0–1 (1 = all at the
+   * station's longitude, near 0 = spread all the way round, so the
+   * longitude means little).
+   */
+  bunching: number
+  topMembers: Member[]
+  /** Monte Carlo ranges (absent until the draws finish). */
+  ranges?: {
+    a: Range
+    longitude: Range
+    share: Range
+    output: Range[]
+  }
 }
 
 export interface PlanResult {
   stations: PlannedStation[]
-  objective: number
-  seedObjective: number
+  elements: string[]
+  required: string[]
+  /** Station of each problem row (same order as problem.index); 255 = none. */
+  assignment: Uint8Array
+  /** Fraction of Monte Carlo draws in which each row stayed with its station. */
+  stability: Float32Array | null
+  /** Station positions per draw: draws × stations × (x, y) heliocentric au. */
+  cloud: Float32Array | null
+  draws: number
+  restarts: number
   iterations: number
-  candidates: number
-  /** Accepted relocations of the weakest station. */
-  relocations: number
-  bodies: number
-  /** Reach λ in km/s. */
-  reachKmS: number
+  cells: number
   tripYears: number
   ms: number
 }
 
-const V_EARTH_KMS = 29.78
-// Simplified continuous-thrust assumption used only to convert orbit-change
-// Δv into a time scale. Real transfer windows and coast arcs are not modeled.
-export const ASSUMED_ACCELERATION_M_S2 = 0.01
-const P_EXP = -6
-const CUTOFF_EXPONENT = 4.5 // exp(-4.5) ≈ 0.011, i.e. 3λ
-const REFINE_BODIES = 15000
-const SEED_BODIES = 6000
-const CANDIDATES = 256
-const ITERATIONS = 40
-const ANNEAL_FRACTION = 0.6
-const MAX_RELOCATION_ROUNDS = 3
-const RELOCATION_TRIES = 3
-const RELOCATION_ITERATIONS = 20
-const SUPPLIERS = 12
-const EPS = 1e-12
-const AU_KM = 1.495978707e8
-const YEAR_S = 365.25 * 86400
-/** Values per station in the state vector: 3 orbit coordinates + longitude. */
-const STRIDE = 4
+export type PlanMessage =
+  | { kind: 'nominal'; result: PlanResult }
+  | { kind: 'progress'; done: number; total: number }
+  | { kind: 'final'; result: PlanResult }
 
+const V_EARTH_KMS = 29.78
+const RESTARTS = 6
+const MAX_ITER = 60
+const MC_MAX_ITER = 15
+const BLEND_KAPPA = 10
+const TOP_MEMBERS = 8
+const DIM = 5
 const SQRT_125 = Math.sqrt(1.25)
 const SQRT_2 = Math.SQRT2
+
+/** Dirichlet concentration for each confidence grade of the mineral lookup. */
+export const CONFIDENCE_KAPPA: Record<string, number> = { H: 200, M: 60, L: 25, VL: 10 }
 
 /** Orbit-space coordinates of (a, e, i in degrees). */
 export function toDeltaV(a: number, e: number, iDeg: number): [number, number, number] {
   return [SQRT_125 * Math.log(a), SQRT_2 * e, SQRT_2 * Math.sin((iDeg * Math.PI) / 180)]
 }
 
-/** a, e, i of a station state (orbit part only). */
-function fromDeltaV(y: Float64Array, o: number) {
-  const a = Math.exp(y[o] / SQRT_125)
-  const e = Math.max(0, y[o + 1] / SQRT_2)
-  const i = (Math.asin(Math.min(1, Math.max(0, y[o + 2] / SQRT_2))) * 180) / Math.PI
-  return { a, e, i }
-}
-
-/** Signed angle θ − φ wrapped to (−π, π]. */
-function wrap(d: number) {
-  if (d > Math.PI) return d - 2 * Math.PI
-  if (d <= -Math.PI) return d + 2 * Math.PI
-  return d
-}
-
-/** Circular orbital speed (km/s) and phasing cost per radian (km/s) for a station at y. */
-function speeds(y: Float64Array, o: number, T: number) {
-  const a = Math.exp(y[o] / SQRT_125)
-  return { a, v: V_EARTH_KMS / Math.sqrt(a), phase: ((2 / 3) * a * AU_KM) / T }
-}
-
-/**
- * Kernel scales for a station at y: K = exp(−(s·|x − y|² + r·Δθ²)), with
- * s = v² / 2λ² (orbit change) and r = ((2/3)·a/T)² / 2λ² (phasing).
- */
-function kernelScales(y: Float64Array, o: number, lambda: number, T: number) {
-  const { v, phase } = speeds(y, o, T)
-  const d = 2 * lambda * lambda
-  return { s: (v * v) / d, r: (phase * phase) / d }
-}
+// ---------------------------------------------------------------- random numbers
 
 function mulberry32(seed: number) {
   return () => {
@@ -186,470 +189,616 @@ function mulberry32(seed: number) {
   }
 }
 
-/** Generalised mean with exponent P_EXP of c[0..E), equal weights. */
-function softMin(c: Float64Array, o: number, E: number) {
-  let s = 0
-  for (let e = 0; e < E; e++) s += Math.pow(c[o + e] + EPS, P_EXP)
-  return Math.pow(s / E, 1 / P_EXP)
+function normal(rand: () => number) {
+  let u = 0
+  while (u === 0) u = rand()
+  return Math.sqrt(-2 * Math.log(u)) * Math.cos(2 * Math.PI * rand())
 }
 
-/** A subset of rows, with its own copies of x and supply. */
-interface Rows {
-  n: number
-  rows: Int32Array
-  x: Float32Array
-  phase: Float32Array
-  supply: Float32Array
-}
-
-function pickRows(problem: StationProblem, limit: number, score: Float64Array): Rows {
-  const { n } = problem
-  const E = problem.elements.length
-  let rows: Int32Array
-  if (n <= limit) {
-    rows = Int32Array.from({ length: n }, (_, j) => j)
-  } else {
-    const order = Array.from({ length: n }, (_, j) => j).sort((p, q) => score[q] - score[p])
-    rows = Int32Array.from(order.slice(0, limit))
+/** Gamma(shape, 1) by Marsaglia–Tsang (with the shape < 1 boost). */
+function gamma(shape: number, rand: () => number): number {
+  if (shape < 1) return gamma(shape + 1, rand) * Math.pow(rand() || 1e-12, 1 / shape)
+  const d = shape - 1 / 3
+  const c = 1 / Math.sqrt(9 * d)
+  for (;;) {
+    let x: number, v: number
+    do {
+      x = normal(rand)
+      v = 1 + c * x
+    } while (v <= 0)
+    v = v * v * v
+    const u = rand()
+    if (u < 1 - 0.0331 * x ** 4 || Math.log(u) < 0.5 * x * x + d * (1 - v + Math.log(v))) return d * v
   }
-  const x = new Float32Array(rows.length * 3)
-  const phase = new Float32Array(rows.length)
-  const supply = new Float32Array(rows.length * E)
-  rows.forEach((j, r) => {
-    x.set(problem.x.subarray(j * 3, j * 3 + 3), r * 3)
-    phase[r] = problem.phase[j]
-    supply.set(problem.supply.subarray(j * E, j * E + E), r * E)
-  })
-  return { n: rows.length, rows, x, phase, supply }
 }
 
-interface Evaluation {
-  K: Float32Array // stations × n
-  S: Float32Array // n
-  c: Float64Array // stations × E
-  P: Float64Array // stations
-  F: number
+/** Dirichlet sample with mean `mean` (sums to 1) and concentration kappa, written into out. */
+function dirichlet(mean: ArrayLike<number>, kappa: number, rand: () => number, out: Float64Array) {
+  let sum = 0
+  for (let m = 0; m < mean.length; m++) {
+    out[m] = mean[m] > 0 ? gamma(kappa * mean[m], rand) : 0
+    sum += out[m]
+  }
+  for (let m = 0; m < mean.length; m++) out[m] = sum > 0 ? out[m] / sum : mean[m]
 }
 
-function evaluate(
-  rows: Rows,
-  Y: Float64Array,
-  stations: number,
-  E: number,
-  lambda: number,
-  T: number,
-  out?: Evaluation,
-): Evaluation {
-  const { n, x, phase, supply } = rows
-  const ev: Evaluation = out ?? {
-    K: new Float32Array(stations * n),
-    S: new Float32Array(n),
-    c: new Float64Array(stations * E),
-    P: new Float64Array(stations),
-    F: 0,
-  }
-  ev.S.fill(0)
-  ev.c.fill(0)
-  for (let k = 0; k < stations; k++) {
-    const o = k * STRIDE
-    const { s, r } = kernelScales(Y, o, lambda, T)
-    const y0 = Y[o], y1 = Y[o + 1], y2 = Y[o + 2], phi = Y[o + 3]
-    const base = k * n
-    for (let j = 0; j < n; j++) {
-      const dt = wrap(phase[j] - phi)
-      const zp = r * dt * dt
-      if (zp >= CUTOFF_EXPONENT) {
-        ev.K[base + j] = 0
-        continue
-      }
-      const d0 = x[j * 3] - y0, d1 = x[j * 3 + 1] - y1, d2 = x[j * 3 + 2] - y2
-      const z = (d0 * d0 + d1 * d1 + d2 * d2) * s + zp
-      const kv = z < CUTOFF_EXPONENT ? Math.exp(-z) : 0
-      ev.K[base + j] = kv
-      ev.S[j] += kv
-    }
-  }
+// ---------------------------------------------------------------- weighted k-means
+
+/** Nearest centroid for each point; on an exact tie the later station wins. */
+function assign(X: Float32Array, n: number, C: Float64Array, k: number, out: Uint8Array) {
+  let changed = 0
   for (let j = 0; j < n; j++) {
-    const inv = 1 / Math.max(1, ev.S[j])
-    for (let k = 0; k < stations; k++) {
-      const kv = ev.K[k * n + j]
-      if (kv === 0) continue
-      const w = kv * inv
-      for (let e = 0; e < E; e++) ev.c[k * E + e] += w * supply[j * E + e]
+    const o = j * DIM
+    let best = 0
+    let bestD = Infinity
+    for (let c = 0; c < k; c++) {
+      const p = c * DIM
+      let d = 0
+      for (let t = 0; t < DIM; t++) {
+        const diff = X[o + t] - C[p + t]
+        d += diff * diff
+      }
+      if (d <= bestD) {
+        bestD = d
+        best = c
+      }
+    }
+    if (out[j] !== best) {
+      out[j] = best
+      changed++
     }
   }
-  ev.F = 0
-  for (let k = 0; k < stations; k++) {
-    ev.P[k] = softMin(ev.c, k * E, E)
-    ev.F += ev.P[k]
-  }
-  return ev
+  return changed
 }
 
-/** ∂P_k/∂c_ke for every station and element. */
-function bottleneckWeights(ev: Evaluation, stations: number, E: number) {
-  const beta = new Float64Array(stations * E)
-  for (let k = 0; k < stations; k++) {
-    const P = ev.P[k]
-    for (let e = 0; e < E; e++) {
-      beta[k * E + e] = P > 0 ? Math.pow((ev.c[k * E + e] + EPS) / P, P_EXP - 1) / E : 1 / E
-    }
-  }
-  return beta
-}
-
-interface Candidates {
-  C: number
-  /** Candidate states (Δv coordinates + longitude), STRIDE per candidate. */
-  Yc: Float64Array
-  /** C × n kernel columns at the true reach. */
-  Kc: Float32Array
-}
-
-/** Candidate positions: strongest overall and per-element carriers, plus a weighted sample. */
-function makeCandidates(rows: Rows, E: number, lambda: number, T: number, rand: () => number): Candidates {
-  const { n, x, phase, supply } = rows
-  const q = new Float64Array(n)
-  for (let j = 0; j < n; j++) for (let e = 0; e < E; e++) q[j] += supply[j * E + e]
-  const order = Array.from({ length: n }, (_, j) => j).sort((p, r) => q[r] - q[p])
-  const chosen = new Set<number>(order.slice(0, Math.min(64, n)))
-  for (let e = 0; e < E; e++) {
-    const byElement = Array.from({ length: n }, (_, j) => j).sort((p, r) => supply[r * E + e] - supply[p * E + e])
-    for (const j of byElement.slice(0, Math.min(8, n))) {
-      if (chosen.size >= Math.min(CANDIDATES, n)) break
-      chosen.add(j)
-    }
-  }
-  let total = 0
-  for (let j = 0; j < n; j++) total += Math.sqrt(q[j])
-  let guard = 0
-  while (chosen.size < Math.min(CANDIDATES, n) && guard++ < CANDIDATES * 20) {
-    let t = rand() * total
-    let j = 0
-    while (j < n - 1 && (t -= Math.sqrt(q[j])) > 0) j++
-    chosen.add(j)
-  }
-  const cand = [...chosen]
-  const C = cand.length
-  const Kc = new Float32Array(C * n)
-  const Yc = new Float64Array(C * STRIDE)
-  cand.forEach((j, c) => {
-    const o = c * STRIDE
-    Yc[o] = x[j * 3]
-    Yc[o + 1] = x[j * 3 + 1]
-    Yc[o + 2] = x[j * 3 + 2]
-    Yc[o + 3] = phase[j]
-    const { s, r } = kernelScales(Yc, o, lambda, T)
-    for (let i = 0; i < n; i++) {
-      const dt = wrap(phase[i] - Yc[o + 3])
-      const d0 = x[i * 3] - Yc[o], d1 = x[i * 3 + 1] - Yc[o + 1], d2 = x[i * 3 + 2] - Yc[o + 2]
-      const z = (d0 * d0 + d1 * d1 + d2 * d2) * s + r * dt * dt
-      Kc[c * n + i] = z < CUTOFF_EXPONENT ? Math.exp(-z) : 0
-    }
-  })
-  return { C, Yc, Kc }
-}
-
-/**
- * Candidates ranked by the production a new station there would get after
- * splitting with stations whose kernel sum per body is S.
- */
-function rankCandidates(rows: Rows, cands: Candidates, S: Float32Array, E: number, skip: Set<number>) {
-  const { n, supply } = rows
-  const own = new Float64Array(E)
-  const ranked: { c: number; P: number }[] = []
-  for (let c = 0; c < cands.C; c++) {
-    if (skip.has(c)) continue
-    own.fill(0)
-    const base = c * n
-    for (let j = 0; j < n; j++) {
-      const kv = cands.Kc[base + j]
-      if (kv === 0) continue
-      const w = kv / Math.max(1, S[j] + kv)
-      for (let e = 0; e < E; e++) own[e] += w * supply[j * E + e]
-    }
-    ranked.push({ c, P: softMin(own, 0, E) })
-  }
-  return ranked.sort((p, q) => q.P - p.P)
-}
-
-/** Add stations one at a time, each at the candidate with the highest production after splitting. */
-function greedySeed(rows: Rows, cands: Candidates, stations: number, E: number, rand: () => number, diversify: boolean) {
-  const n = rows.n
-  const S = new Float32Array(n)
-  const Y = new Float64Array(stations * STRIDE)
-  const used = new Set<number>()
-  for (let k = 0; k < stations; k++) {
-    const ranked = rankCandidates(rows, cands, S, E, used)
-    const shortlist = ranked.slice(0, Math.min(diversify ? 4 : 1, ranked.length))
-    const best = shortlist[Math.floor(rand() * shortlist.length)]?.c ?? k % cands.C
-    used.add(best)
-    for (let j = 0; j < n; j++) S[j] += cands.Kc[best * n + j]
-    Y.set(cands.Yc.subarray(best * STRIDE, best * STRIDE + STRIDE), k * STRIDE)
-  }
-  return Y
-}
-
-/** One preconditioned gradient-ascent step on the exact forward objective. */
-function step(rows: Rows, Y: Float64Array, ev: Evaluation, stations: number, E: number, lambda: number, T: number) {
-  const { n, x, phase, supply } = rows
-  const beta = bottleneckWeights(ev, stations, E)
-  // g_jk = Σ_e β_ke ŝ_je : how much asteroid j helps station k.
-  const g = new Float32Array(stations * n)
+/** Move each centroid to the weighted mean of its points; reseed empty ones at the worst-served point. */
+function update(X: Float32Array, w: Float64Array, n: number, labels: Uint8Array, C: Float64Array, k: number) {
+  const sum = new Float64Array(k * DIM)
+  const W = new Float64Array(k)
   for (let j = 0; j < n; j++) {
-    for (let k = 0; k < stations; k++) {
-      if (ev.K[k * n + j] === 0) continue
-      let s = 0
-      for (let e = 0; e < E; e++) s += beta[k * E + e] * supply[j * E + e]
-      g[k * n + j] = s
-    }
+    const wj = w[j]
+    if (wj <= 0) continue
+    const c = labels[j]
+    W[c] += wj
+    for (let t = 0; t < DIM; t++) sum[c * DIM + t] += wj * X[j * DIM + t]
   }
-  let maxMove = 0
-  for (let k = 0; k < stations; k++) {
-    const o = k * STRIDE
-    let grad0 = 0, grad1 = 0, grad2 = 0, grad3 = 0
-    const y0 = Y[o], y1 = Y[o + 1], y2 = Y[o + 2], phi = Y[o + 3]
-    const { s, r } = kernelScales(Y, o, lambda, T)
-    for (let j = 0; j < n; j++) {
-      const kv = ev.K[k * n + j]
-      if (kv === 0) continue
-      const S = ev.S[j]
-      let gamma: number
-      if (S <= 1) {
-        gamma = g[k * n + j]
-      } else {
-        // Competition: taking more of j only helps if this station values it
-        // more than the stations it would take it from.
-        let gbar = 0
-        for (let m = 0; m < stations; m++) gbar += ev.K[m * n + j] * g[m * n + j]
-        gamma = (g[k * n + j] - gbar / S) / S
-      }
-      // dF/dK_kj = gamma. Differentiate K = exp(−(s|Δx|² + rΔθ²)) through the
-      // separations and the a-dependence of s (∝ 1/a) and r (∝ a²).
-      const d0 = x[j * 3] - y0, d1 = x[j * 3 + 1] - y1, d2 = x[j * 3 + 2] - y2
-      const dt = wrap(phase[j] - phi)
-      const zx = s * (d0 * d0 + d1 * d1 + d2 * d2)
-      const zp = r * dt * dt
-      grad0 += gamma * kv * (2 * s * d0 + zx / SQRT_125 - (2 * zp) / SQRT_125)
-      grad1 += gamma * kv * (2 * s * d1)
-      grad2 += gamma * kv * (2 * s * d2)
-      grad3 += gamma * kv * (2 * r * dt)
-    }
-    // Precondition in Δv units and cap the step to keep annealed refinement stable.
-    const norm = Math.hypot(grad0 / Math.sqrt(s), grad1 / Math.sqrt(s), grad2 / Math.sqrt(s), grad3 / Math.sqrt(r))
-    if (norm <= 1e-18) continue
-    const rate = Math.min(0.2 * lambda, (0.5 * lambda) / norm)
-    Y[o] += (rate * grad0) / s
-    Y[o + 1] = Math.max(0, y1 + (rate * grad1) / s)
-    Y[o + 2] = Math.min(SQRT_2, Math.max(0, y2 + (rate * grad2) / s))
-    Y[o + 3] = wrap(phi + (rate * grad3) / r)
-    const sp = speeds(Y, o, T)
-    const move = Math.hypot(
-      sp.v * Math.hypot(Y[o] - y0, Y[o + 1] - y1, Y[o + 2] - y2),
-      sp.phase * wrap(Y[o + 3] - phi),
-    )
-    maxMove = Math.max(maxMove, move)
-  }
-  return maxMove / Math.max(lambda, 1e-9)
-}
-
-/**
- * Gradient refinement from Y. With `anneal`, the reach starts at 2λ and
- * shrinks to λ over the first 60% of iterations. Returns the best layout seen
- * at the true reach.
- */
-function refine(
-  rows: Rows,
-  Y0: Float64Array,
-  stations: number,
-  E: number,
-  lambda: number,
-  T: number,
-  iterations: number,
-  anneal: boolean,
-) {
-  const Y = Y0.slice()
-  let ev = evaluate(rows, Y, stations, E, lambda, T)
-  let bestF = ev.F
-  let bestY = Y.slice()
-  const annealEnd = anneal ? Math.max(1, Math.floor(iterations * ANNEAL_FRACTION)) : 0
-  const work = evaluate(rows, Y, stations, E, lambda, T)
-  let still = 0
-  let done = 0
-  for (let t = 0; t < iterations; t++) {
-    done = t + 1
-    const lt = anneal ? lambda * (1 + Math.max(0, 1 - t / annealEnd)) : lambda
-    const cur = evaluate(rows, Y, stations, E, lt, T, work)
-    const moved = step(rows, Y, cur, stations, E, lt, T)
-    ev = evaluate(rows, Y, stations, E, lambda, T, ev)
-    if (ev.F > bestF) {
-      bestF = ev.F
-      bestY = Y.slice()
-    }
-    if (t >= annealEnd) {
-      still = moved < 0.002 ? still + 1 : 0
-      if (still >= 3) break
-    }
-  }
-  return { Y: bestY, F: bestF, iterations: done }
-}
-
-function bodiesForHalf(sorted: { u: number }[], total: number) {
-  let acc = 0
-  for (let r = 0; r < sorted.length; r++) {
-    acc += sorted[r].u
-    if (acc >= total / 2) return r + 1
-  }
-  return sorted.length
-}
-
-export function optimiseStations(problem: StationProblem, params: PlanParams): PlanResult {
-  const t0 = performance.now()
-  const E = problem.elements.length
-  const stations = Math.max(1, Math.floor(params.stations))
-  const reachHours = Math.max(1, params.reachHours)
-  // Δv = a·t. This maps the user's time budget onto the existing orbital
-  // metric so the reach kernel and optimization score are time-scaled.
-  const lambda = (ASSUMED_ACCELERATION_M_S2 * reachHours * 3600) / 1000
-  const tripYears = Math.max(0.1, params.tripYears)
-  const T = tripYears * YEAR_S
-  const rand = mulberry32(1)
-
-  // Rank bodies by their best share of any required element, so carriers of
-  // the scarce inputs are always kept in the working set.
-  const score = new Float64Array(problem.n)
-  for (let j = 0; j < problem.n; j++) {
-    let m = 0
-    for (let e = 0; e < E; e++) m = Math.max(m, problem.supply[j * E + e])
-    score[j] = m
-  }
-  const refineRows = pickRows(problem, REFINE_BODIES, score)
-  const seedRows = pickRows(problem, SEED_BODIES, score)
-
-  // 1. Greedy multi-start seeding, 2. annealed refinement. Slightly varied
-  // near-best placements reduce dependence on one greedy tie/order choice.
-  const cands = makeCandidates(seedRows, E, lambda, T, rand)
-  let seedY = greedySeed(seedRows, cands, stations, E, rand, false)
-  let bestSeedScore = evaluate(seedRows, seedY, stations, E, lambda, T).F
-  let best = refine(refineRows, seedY, stations, E, lambda, T, ITERATIONS, true)
-  let iterations = best.iterations
-  for (let start = 1; start < 4; start++) {
-    const candidateY = greedySeed(seedRows, cands, stations, E, rand, true)
-    const candidateScore = evaluate(seedRows, candidateY, stations, E, lambda, T).F
-    if (candidateScore > bestSeedScore) {
-      seedY = candidateY
-      bestSeedScore = candidateScore
-    }
-    const trial = refine(refineRows, candidateY, stations, E, lambda, T, ITERATIONS, true)
-    iterations += trial.iterations
-    if (trial.F > best.F) best = trial
-  }
-
-  // 3. Relocation: move the weakest station to the best open candidate given
-  //    the others, refine, and keep the move if total production rises.
-  let relocations = 0
-  for (let round = 0; round < Math.min(stations, MAX_RELOCATION_ROUNDS) && stations > 1; round++) {
-    const evSeed = evaluate(seedRows, best.Y, stations, E, lambda, T)
-    let weakest = 0
-    for (let k = 1; k < stations; k++) if (evSeed.P[k] < evSeed.P[weakest]) weakest = k
-    const S = evSeed.S.slice()
-    for (let j = 0; j < seedRows.n; j++) S[j] -= evSeed.K[weakest * seedRows.n + j]
-    const options = rankCandidates(seedRows, cands, S, E, new Set()).slice(0, RELOCATION_TRIES)
-    let improved = false
-    for (const { c } of options) {
-      const Y = best.Y.slice()
-      Y.set(cands.Yc.subarray(c * STRIDE, c * STRIDE + STRIDE), weakest * STRIDE)
-      const trial = refine(refineRows, Y, stations, E, lambda, T, RELOCATION_ITERATIONS, false)
-      iterations += trial.iterations
-      if (trial.F > best.F * (1 + 1e-4)) {
-        best = { ...trial, iterations: best.iterations }
-        improved = true
-      }
-    }
-    if (!improved) break
-    relocations++
-  }
-  const bestY = best.Y
-
-  // Final report on every carrier, not just the working set.
-  const all = pickRows(problem, Infinity, score)
-  const seedObjective = evaluate(all, seedY, stations, E, lambda, T).F
-  const fin = evaluate(all, bestY, stations, E, lambda, T)
-  const beta = bottleneckWeights(fin, stations, E)
-  const n = all.n
-  const out: PlannedStation[] = []
-  for (let k = 0; k < stations; k++) {
-    const tonnes = new Array<number>(E).fill(0)
-    const contrib: { j: number; u: number }[] = []
-    let uTotal = 0
-    let kTotal = 0
-    for (let j = 0; j < n; j++) {
-      const kv = fin.K[k * n + j]
-      if (kv === 0) continue
-      const row = all.rows[j]
-      const w = kv / Math.max(1, fin.S[j])
-      let qv = 0
-      for (let e = 0; e < E; e++) {
-        tonnes[e] += w * problem.tonnes[row * E + e]
-        qv += beta[k * E + e] * all.supply[j * E + e]
-      }
-      const u = w * qv
-      uTotal += u
-      kTotal += kv * qv
-      contrib.push({ j, u })
-    }
-    contrib.sort((p, q) => q.u - p.u)
-    const shares = Array.from(fin.c.subarray(k * E, k * E + E))
-    let bottleneck = 0
-    for (let e = 1; e < E; e++) if (shares[e] < shares[bottleneck]) bottleneck = e
-    const o = k * STRIDE
-    const orbit = fromDeltaV(bestY, o)
-    const sp = speeds(bestY, o, T)
-    const phi = bestY[o + 3]
-    // 1σ zone: Δv = λ from the a term alone, or from phasing alone.
-    const da = lambda / (sp.v * SQRT_125)
-    out.push({
-      ...orbit,
-      longitude: (phi * 180) / Math.PI,
-      zone: {
-        aMin: orbit.a * Math.exp(-da),
-        aMax: orbit.a * Math.exp(da),
-        halfAngleDeg: Math.min(180, ((lambda / sp.phase) * 180) / Math.PI),
-      },
-      production: fin.P[k],
-      shares,
-      tonnes,
-      bottleneck,
-      overlap: kTotal > 0 ? 1 - uTotal / kTotal : 0,
-      bodies: bodiesForHalf(contrib, uTotal),
-      suppliers: contrib.slice(0, SUPPLIERS).map((c) => {
-        const dt = wrap(all.phase[c.j] - phi)
-        const dOrbit =
-          sp.v *
-          Math.hypot(all.x[c.j * 3] - bestY[o], all.x[c.j * 3 + 1] - bestY[o + 1], all.x[c.j * 3 + 2] - bestY[o + 2])
-        const dPhase = sp.phase * Math.abs(dt)
-        return {
-          index: problem.index[all.rows[c.j]],
-          share: uTotal > 0 ? c.u / uTotal : 0,
-          dv: Math.hypot(dOrbit, dPhase),
-          dvPhase: dPhase,
-          offsetDeg: (dt * 180) / Math.PI,
+  for (let c = 0; c < k; c++) {
+    if (W[c] > 0) {
+      for (let t = 0; t < DIM; t++) C[c * DIM + t] = sum[c * DIM + t] / W[c]
+    } else {
+      // Empty station: move it to the point contributing most to the inertia.
+      let worst = -1
+      let worstCost = -1
+      for (let j = 0; j < n; j++) {
+        if (w[j] <= 0) continue
+        const p = labels[j] * DIM
+        let d = 0
+        for (let t = 0; t < DIM; t++) d += (X[j * DIM + t] - C[p + t]) ** 2
+        if (w[j] * d > worstCost) {
+          worstCost = w[j] * d
+          worst = j
         }
-      }),
-    })
+      }
+      if (worst >= 0) for (let t = 0; t < DIM; t++) C[c * DIM + t] = X[worst * DIM + t]
+    }
   }
-  out.sort((p, q) => q.production - p.production)
+}
 
+function inertia(X: Float32Array, w: Float64Array, n: number, labels: Uint8Array, C: Float64Array) {
+  let s = 0
+  for (let j = 0; j < n; j++) {
+    if (w[j] <= 0) continue
+    const p = labels[j] * DIM
+    let d = 0
+    for (let t = 0; t < DIM; t++) d += (X[j * DIM + t] - C[p + t]) ** 2
+    s += w[j] * d
+  }
+  return s
+}
+
+function lloyd(X: Float32Array, w: Float64Array, n: number, C: Float64Array, k: number, labels: Uint8Array, maxIter: number) {
+  let it = 0
+  for (; it < maxIter; it++) {
+    const changed = assign(X, n, C, k, labels)
+    if (changed === 0 && it > 0) break
+    update(X, w, n, labels, C, k)
+  }
+  return it
+}
+
+/** Distance to the assigned centre (upper) and to the nearest other centre (lower), per point. */
+function bounds(X: Float32Array, n: number, C: Float64Array, k: number, labels: Uint8Array) {
+  const upper = new Float64Array(n)
+  const lower = new Float64Array(n)
+  for (let j = 0; j < n; j++) {
+    let second = Infinity
+    for (let c = 0; c < k; c++) {
+      let d = 0
+      for (let t = 0; t < DIM; t++) d += (X[j * DIM + t] - C[c * DIM + t]) ** 2
+      if (c === labels[j]) upper[j] = Math.sqrt(d)
+      else if (d < second) second = d
+    }
+    lower[j] = Math.sqrt(second)
+  }
+  return { upper, lower }
+}
+
+/**
+ * Weighted Lloyd iterations with Hamerly's bounds: a point whose distance to
+ * its centre (upper bound) is below its distance to every other centre (lower
+ * bound) can't change station, so only points near a boundary are re-checked.
+ * Starts from labels that are already nearest-centre for C and from their bounds.
+ */
+function lloydBounded(
+  X: Float32Array,
+  w: Float64Array,
+  n: number,
+  C: Float64Array,
+  k: number,
+  labels: Uint8Array,
+  upper: Float64Array,
+  lower: Float64Array,
+  maxIter: number,
+) {
+  const old = new Float64Array(k * DIM)
+  const shift = new Float64Array(k)
+  for (let it = 0; it < maxIter; it++) {
+    old.set(C)
+    update(X, w, n, labels, C, k)
+    let maxShift = 0
+    for (let c = 0; c < k; c++) {
+      let d = 0
+      for (let t = 0; t < DIM; t++) d += (C[c * DIM + t] - old[c * DIM + t]) ** 2
+      shift[c] = Math.sqrt(d)
+      if (shift[c] > maxShift) maxShift = shift[c]
+    }
+    if (maxShift === 0) break
+    let changed = 0
+    for (let j = 0; j < n; j++) {
+      upper[j] += shift[labels[j]]
+      lower[j] -= maxShift
+      if (upper[j] < lower[j]) continue
+      // Tighten the upper bound, then do the full search only if still needed.
+      const o = j * DIM
+      let d = 0
+      for (let t = 0; t < DIM; t++) d += (X[o + t] - C[labels[j] * DIM + t]) ** 2
+      upper[j] = Math.sqrt(d)
+      if (upper[j] < lower[j]) continue
+      let best = labels[j]
+      let bestD = d
+      let second = Infinity
+      for (let c = 0; c < k; c++) {
+        if (c === labels[j]) continue
+        let dc = 0
+        for (let t = 0; t < DIM; t++) dc += (X[o + t] - C[c * DIM + t]) ** 2
+        if (dc <= bestD) {
+          second = bestD
+          bestD = dc
+          best = c
+        } else if (dc < second) second = dc
+      }
+      if (best !== labels[j]) {
+        labels[j] = best
+        changed++
+      }
+      upper[j] = Math.sqrt(bestD)
+      lower[j] = Math.sqrt(second)
+    }
+    if (changed === 0) break
+  }
+}
+
+/** Weighted k-means++: first centre ∝ w, then ∝ w × D². */
+function seedPlusPlus(X: Float32Array, w: Float64Array, n: number, k: number, rand: () => number) {
+  const C = new Float64Array(k * DIM)
+  const D = new Float64Array(n).fill(Infinity)
+  const pick = (score: (j: number) => number) => {
+    let total = 0
+    for (let j = 0; j < n; j++) total += score(j)
+    let t = rand() * total
+    for (let j = 0; j < n; j++) {
+      t -= score(j)
+      if (t <= 0) return j
+    }
+    return n - 1
+  }
+  for (let c = 0; c < k; c++) {
+    const j = c === 0 ? pick((i) => w[i]) : pick((i) => w[i] * D[i])
+    for (let t = 0; t < DIM; t++) C[c * DIM + t] = X[j * DIM + t]
+    for (let i = 0; i < n; i++) {
+      let d = 0
+      for (let t = 0; t < DIM; t++) d += (X[i * DIM + t] - C[c * DIM + t]) ** 2
+      if (d < D[i]) D[i] = d
+    }
+  }
+  return C
+}
+
+// ---------------------------------------------------------------- helpers
+
+/** Embed every asteroid in the 5-D Δv space for trip time T (years). */
+function embed(p: StationProblem, tripYears: number) {
+  const X = new Float32Array(p.n * DIM)
+  for (let j = 0; j < p.n; j++) {
+    const period = Math.pow(p.a[j], 1.5)
+    const q = ((2 / 3) * period) / (2 * Math.PI * tripYears)
+    X[j * DIM] = p.x[j * 3]
+    X[j * DIM + 1] = p.x[j * 3 + 1]
+    X[j * DIM + 2] = p.x[j * 3 + 2]
+    X[j * DIM + 3] = q * Math.cos(p.phase[j])
+    X[j * DIM + 4] = q * Math.sin(p.phase[j])
+  }
+  return X
+}
+
+/** Station orbit from a centroid. */
+function centroidOrbit(C: Float64Array, o: number) {
+  const a = Math.exp(C[o] / SQRT_125)
   return {
-    stations: out,
-    objective: fin.F,
-    seedObjective,
+    a,
+    e: Math.max(0, C[o + 1] / SQRT_2),
+    i: (Math.asin(Math.min(1, Math.max(0, C[o + 2] / SQRT_2))) * 180) / Math.PI,
+    lon: Math.atan2(C[o + 4], C[o + 3]),
+  }
+}
+
+/** Grade of every element for each scenario, kg per tonne, given sampled type minerals. */
+function scenarioGrades(model: SamplingModel, typeMin: Float64Array, rand: () => number, out: Float64Array) {
+  const E = model.elements.length
+  const M = model.mineralCount
+  const mix = new Float64Array(M)
+  const blend = new Float64Array(8)
+  for (let s = 0; s < model.scenarioCount; s++) {
+    const base = model.scenarioBases[s]
+    if (base.types.length === 0) {
+      for (let e = 0; e < E; e++) out[s * E + e] = model.scenarioGrade[s * E + e]
+      continue
+    }
+    let weights: ArrayLike<number> = base.weights
+    if (base.types.length > 1) {
+      dirichlet(base.weights, BLEND_KAPPA, rand, blend)
+      weights = blend
+    }
+    mix.fill(0)
+    base.types.forEach((b, i) => {
+      for (let m = 0; m < M; m++) mix[m] += weights[i] * typeMin[b * M + m]
+    })
+    for (let e = 0; e < E; e++) {
+      let g = 0
+      for (let m = 0; m < M; m++) g += mix[m] * model.mineralYield[m * E + e]
+      out[s * E + e] = g * 1000
+    }
+    if (model.hIndex >= 0 && model.waterIndex >= 0) out[s * E + model.hIndex] += out[s * E + model.waterIndex] * model.hInWater
+  }
+}
+
+function percentile(sorted: Float64Array, q: number) {
+  if (sorted.length === 0) return 0
+  const pos = (sorted.length - 1) * q
+  const lo = Math.floor(pos)
+  const hi = Math.ceil(pos)
+  return sorted[lo] + (sorted[hi] - sorted[lo]) * (pos - lo)
+}
+
+function range(values: Float64Array): Range {
+  const s = values.slice().sort()
+  return { lo: percentile(s, 0.05), mid: percentile(s, 0.5), hi: percentile(s, 0.95) }
+}
+
+const wrap = (d: number) => (d > Math.PI ? d - 2 * Math.PI : d <= -Math.PI ? d + 2 * Math.PI : d)
+
+// ---------------------------------------------------------------- main
+
+export function planStations(problem: StationProblem, params: PlanParams, emit: (m: PlanMessage) => void) {
+  const t0 = performance.now()
+  const { n, model } = problem
+  const E = model.elements.length
+  const k = Math.max(1, Math.min(Math.floor(params.stations), 32))
+  const tripYears = Math.max(0.1, params.tripYears)
+  const rand = mulberry32(7)
+  const X = embed(problem, tripYears)
+
+  // Nominal weights: tonnes of the product's inputs per body.
+  const reqGrade = new Float64Array(model.scenarioCount)
+  for (let s = 0; s < model.scenarioCount; s++) {
+    for (const e of model.required) reqGrade[s] += model.scenarioGrade[s * E + e]
+  }
+  const w = new Float64Array(n)
+  for (let j = 0; j < n; j++) {
+    const s = problem.scenario[j]
+    w[j] = s >= 0 ? (problem.mass[j] * reqGrade[s]) / 1000 : 0
+  }
+
+  // Grid summary ("cells") used for restarts and the Monte Carlo.
+  const cells = buildCells(problem, X, w)
+
+  // 1. Restarts of weighted k-means++ on the cells, best kept.
+  let bestC: Float64Array | null = null
+  let bestI = Infinity
+  let iterations = 0
+  const cellLabels = new Uint8Array(cells.count)
+  for (let r = 0; r < RESTARTS; r++) {
+    const C = seedPlusPlus(cells.X, cells.w, cells.count, k, rand)
+    cellLabels.fill(255)
+    iterations += lloyd(cells.X, cells.w, cells.count, C, k, cellLabels, MAX_ITER)
+    const I = inertia(cells.X, cells.w, cells.count, cellLabels, C)
+    if (I < bestI) {
+      bestI = I
+      bestC = C
+    }
+  }
+  // 2. Finish on every asteroid.
+  const C = bestC!
+  const labels = new Uint8Array(n).fill(255)
+  iterations += lloyd(X, w, n, C, k, labels, MAX_ITER)
+  assign(X, n, C, k, labels)
+
+  // Order stations by the tonnage they hold.
+  const held = new Float64Array(k)
+  for (let j = 0; j < n; j++) held[labels[j]] += w[j]
+  const order = Array.from({ length: k }, (_, c) => c).sort((p, q) => held[q] - held[p])
+  const rank = new Uint8Array(k)
+  order.forEach((c, r) => (rank[c] = r))
+  const Cs = new Float64Array(k * DIM)
+  order.forEach((c, r) => Cs.set(C.subarray(c * DIM, c * DIM + DIM), r * DIM))
+  for (let j = 0; j < n; j++) labels[j] = rank[labels[j]]
+
+  const totalW = held.reduce((s, v) => s + v, 0)
+  const stations = describe(problem, X, w, labels, Cs, k, totalW)
+  const base: PlanResult = {
+    stations,
+    elements: model.elements,
+    required: Array.from(model.required, (e) => model.elements[e]),
+    assignment: labels,
+    stability: null,
+    cloud: null,
+    draws: 0,
+    restarts: RESTARTS,
     iterations,
-    candidates: cands.C,
-    relocations,
-    bodies: problem.n,
-    reachKmS: lambda,
+    cells: cells.count,
     tripYears,
     ms: performance.now() - t0,
   }
+  emit({ kind: 'nominal', result: base })
+  if (params.draws <= 0 || totalW <= 0) {
+    emit({ kind: 'final', result: base })
+    return
+  }
+
+  // 3. Monte Carlo over composition, warm-started from the nominal stations.
+  const D = Math.floor(params.draws)
+  const M = model.mineralCount
+  const typeMin = new Float64Array(model.typeCount * M)
+  const sampled = new Float64Array(M)
+  const grade = new Float64Array(model.scenarioCount * E)
+  const cw = new Float64Array(cells.count)
+  const lab = new Uint8Array(cells.count)
+  const Cd = new Float64Array(k * DIM)
+  const nominalCell = new Uint8Array(cells.count)
+  assign(cells.X, cells.count, Cs, k, nominalCell)
+  const start = bounds(cells.X, cells.count, Cs, k, nominalCell)
+  const upper = new Float64Array(cells.count)
+  const lower = new Float64Array(cells.count)
+  const S = model.scenarioCount
+  const reqDraw = new Float64Array(S)
+  const stationScenarioMass = new Float64Array(k * S)
+  const stay = new Float32Array(cells.count * k)
+  const aDraw = new Float64Array(D * k)
+  const lonDraw = new Float64Array(D * k)
+  const shareDraw = new Float64Array(D * k)
+  const outDraw = new Float64Array(D * k * E)
+  const cloud = new Float32Array(D * k * 2)
+  const nominalLon = stations.map((s) => (s.longitude * Math.PI) / 180)
+  const wk = new Float64Array(k)
+
+  for (let d = 0; d < D; d++) {
+    for (let b = 0; b < model.typeCount; b++) {
+      dirichlet(model.typeMinerals.subarray(b * M, b * M + M), model.typeKappa[b], rand, sampled)
+      typeMin.set(sampled, b * M)
+    }
+    scenarioGrades(model, typeMin, rand, grade)
+    for (let s = 0; s < S; s++) {
+      let g = 0
+      for (const e of model.required) g += grade[s * E + e]
+      reqDraw[s] = g / 1000
+    }
+    cw.fill(0)
+    for (let p = 0; p < cells.pairs; p++) cw[cells.pairCell[p]] += cells.pairMass[p] * reqDraw[cells.pairScenario[p]]
+    Cd.set(Cs)
+    lab.set(nominalCell)
+    upper.set(start.upper)
+    lower.set(start.lower)
+    lloydBounded(cells.X, cw, cells.count, Cd, k, lab, upper, lower, MC_MAX_ITER)
+
+    let tot = 0
+    wk.fill(0)
+    for (let c = 0; c < cells.count; c++) {
+      wk[lab[c]] += cw[c]
+      tot += cw[c]
+      stay[c * k + lab[c]]++
+    }
+    // Output per station: its mass in each class × that class's sampled grades.
+    stationScenarioMass.fill(0)
+    for (let p = 0; p < cells.pairs; p++) {
+      stationScenarioMass[lab[cells.pairCell[p]] * S + cells.pairScenario[p]] += cells.pairMass[p] / 1000
+    }
+    for (let c = 0; c < k; c++) {
+      const o = (d * k + c) * E
+      for (let s = 0; s < S; s++) {
+        const m = stationScenarioMass[c * S + s]
+        if (m === 0) continue
+        for (let e = 0; e < E; e++) outDraw[o + e] += m * grade[s * E + e]
+      }
+    }
+    for (let c = 0; c < k; c++) {
+      const o = centroidOrbit(Cd, c * DIM)
+      aDraw[d * k + c] = o.a
+      // Longitude relative to nominal, unwrapped, so ranges don't jump at ±180°.
+      lonDraw[d * k + c] = nominalLon[c] + wrap(o.lon - nominalLon[c])
+      shareDraw[d * k + c] = tot > 0 ? wk[c] / tot : 0
+      cloud[(d * k + c) * 2] = o.a * Math.cos(o.lon)
+      cloud[(d * k + c) * 2 + 1] = o.a * Math.sin(o.lon)
+    }
+    if ((d + 1) % 50 === 0 && d + 1 < D) emit({ kind: 'progress', done: d + 1, total: D })
+  }
+
+  const column = (src: Float64Array, c: number, stride: number, offset = 0) => {
+    const v = new Float64Array(D)
+    for (let d = 0; d < D; d++) v[d] = src[(d * k + c) * stride + offset]
+    return v
+  }
+  const toDeg = (r: number) => (r * 180) / Math.PI
+  const finalStations = stations.map((s, c) => {
+    const lon = range(column(lonDraw, c, 1))
+    return {
+      ...s,
+      ranges: {
+        a: range(column(aDraw, c, 1)),
+        longitude: { lo: toDeg(lon.lo), mid: toDeg(lon.mid), hi: toDeg(lon.hi) },
+        share: range(column(shareDraw, c, 1)),
+        output: Array.from({ length: E }, (_, e) => range(column(outDraw, c, E, e))),
+      },
+    }
+  })
+  const stability = new Float32Array(n)
+  for (let j = 0; j < n; j++) stability[j] = stay[cells.of[j] * k + labels[j]] / D
+
+  emit({
+    kind: 'final',
+    result: { ...base, stations: finalStations, stability, cloud, draws: D, ms: performance.now() - t0 },
+  })
+}
+
+/** Grid summary of the asteroids: cells in (ln a, e, sin i, longitude). */
+function buildCells(p: StationProblem, X: Float32Array, w: Float64Array) {
+  const NA = 32, NE = 10, NI = 10, NT = 24
+  let laMin = Infinity, laMax = -Infinity, eMax = 0, siMax = 0
+  for (let j = 0; j < p.n; j++) {
+    laMin = Math.min(laMin, X[j * DIM])
+    laMax = Math.max(laMax, X[j * DIM])
+    eMax = Math.max(eMax, X[j * DIM + 1])
+    siMax = Math.max(siMax, X[j * DIM + 2])
+  }
+  const bin = (v: number, lo: number, hi: number, nb: number) =>
+    Math.min(nb - 1, Math.max(0, Math.floor(((v - lo) / Math.max(hi - lo, 1e-9)) * nb)))
+  const ids = new Map<number, number>()
+  const of = new Int32Array(p.n)
+  for (let j = 0; j < p.n; j++) {
+    const key =
+      ((bin(X[j * DIM], laMin, laMax, NA) * NE + bin(X[j * DIM + 1], 0, eMax, NE)) * NI + bin(X[j * DIM + 2], 0, siMax, NI)) *
+        NT +
+      bin(p.phase[j], -Math.PI, Math.PI, NT)
+    let id = ids.get(key)
+    if (id === undefined) {
+      id = ids.size
+      ids.set(key, id)
+    }
+    of[j] = id
+  }
+  const count = ids.size
+  const cx = new Float64Array(count * DIM)
+  const cwSum = new Float64Array(count)
+  const pairKey = new Map<number, number>()
+  const pairCell: number[] = []
+  const pairScenario: number[] = []
+  const pairMass: number[] = []
+  for (let j = 0; j < p.n; j++) {
+    const c = of[j]
+    // Weighted by tonnage where there is any, so a cell sits where its mass is.
+    const wt = w[j] > 0 ? w[j] : 1e-9
+    cwSum[c] += wt
+    for (let t = 0; t < DIM; t++) cx[c * DIM + t] += wt * X[j * DIM + t]
+    const s = p.scenario[j]
+    if (s >= 0 && p.mass[j] > 0) {
+      const key = c * 1024 + s
+      let pi = pairKey.get(key)
+      if (pi === undefined) {
+        pi = pairCell.length
+        pairKey.set(key, pi)
+        pairCell.push(c)
+        pairScenario.push(s)
+        pairMass.push(0)
+      }
+      pairMass[pi] += p.mass[j]
+    }
+  }
+  const cellX = new Float32Array(count * DIM)
+  const cellW = new Float64Array(count)
+  for (let c = 0; c < count; c++) {
+    for (let t = 0; t < DIM; t++) cellX[c * DIM + t] = cx[c * DIM + t] / cwSum[c]
+  }
+  for (let j = 0; j < p.n; j++) cellW[of[j]] += w[j]
+  return {
+    count,
+    of,
+    X: cellX,
+    w: cellW,
+    pairs: pairCell.length,
+    pairCell: Int32Array.from(pairCell),
+    pairScenario: Int32Array.from(pairScenario),
+    pairMass: Float64Array.from(pairMass),
+  }
+}
+
+/** Orbit, output, Δv and top members of every station for one assignment. */
+function describe(
+  p: StationProblem,
+  X: Float32Array,
+  w: Float64Array,
+  labels: Uint8Array,
+  C: Float64Array,
+  k: number,
+  totalW: number,
+): PlannedStation[] {
+  const { model } = p
+  const E = model.elements.length
+  return Array.from({ length: k }, (_, c) => {
+    const o = centroidOrbit(C, c * DIM)
+    const v = V_EARTH_KMS / Math.sqrt(o.a)
+    const output = new Array<number>(E).fill(0)
+    const members: { j: number; dv: number; w: number }[] = []
+    let held = 0
+    let qSum = 0
+    for (let j = 0; j < p.n; j++) {
+      if (labels[j] !== c) continue
+      const s = p.scenario[j]
+      if (s >= 0) for (let e = 0; e < E; e++) output[e] += (p.mass[j] * model.scenarioGrade[s * E + e]) / 1000
+      let d = 0
+      for (let t = 0; t < DIM; t++) d += (X[j * DIM + t] - C[c * DIM + t]) ** 2
+      members.push({ j, dv: v * Math.sqrt(d), w: w[j] })
+      held += w[j]
+      qSum += w[j] * Math.hypot(X[j * DIM + 3], X[j * DIM + 4])
+    }
+    // Tonnage-weighted median Δv.
+    const byDv = members.filter((m) => m.w > 0).sort((p1, p2) => p1.dv - p2.dv)
+    let acc = 0
+    let dvMedian = 0
+    for (const m of byDv) {
+      acc += m.w
+      if (acc >= held / 2) {
+        dvMedian = m.dv
+        break
+      }
+    }
+    const top = members
+      .filter((m) => m.w > 0)
+      .sort((p1, p2) => p2.w - p1.w)
+      .slice(0, TOP_MEMBERS)
+      .map((m) => {
+        const dTheta = wrap(p.phase[m.j] - o.lon)
+        return { index: p.index[m.j], tonnes: m.w, dv: m.dv, offsetDeg: (dTheta * 180) / Math.PI }
+      })
+    return {
+      a: o.a,
+      e: o.e,
+      i: o.i,
+      longitude: (o.lon * 180) / Math.PI,
+      members: members.length,
+      share: totalW > 0 ? held / totalW : 0,
+      output,
+      dvMedian,
+      bunching: qSum > 0 ? Math.min(1, Math.hypot(C[c * DIM + 3], C[c * DIM + 4]) / (qSum / held)) : 0,
+      topMembers: top,
+    }
+  })
 }

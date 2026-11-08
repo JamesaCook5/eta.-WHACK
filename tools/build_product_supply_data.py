@@ -119,6 +119,10 @@ def main() -> None:
         scenarios[key] = {
             "density_g_cm3": round(density, 3),
             "grade_kg_per_t": {el: round(grades[el], 3) for el in ELEMENTS if grades.get(el, 0) > 0},
+            # For Monte Carlo: the base types this scenario blends, and whether
+            # they cover all of it (X with unknown albedo leaves part unresolved).
+            "base": {b: w for b, w in (scen.get("base_weights") or {}).items() if b in lookup["types"]},
+            "resolved": (scen.get("unresolved_weight") or 0) == 0,
         }
 
     externals = mfg.get("external_resources", {})
@@ -150,6 +154,17 @@ def main() -> None:
     order = [pid for _, ids in GROUPS for pid in ids]
     products.sort(key=lambda p: (order.index(p["id"]) if p["id"] in order else len(order), p["label"]))
 
+    # Per base type: nominal mineral wt% and the lookup's confidence grade, which
+    # the UI's Monte Carlo turns into how widely the mix is resampled.
+    types = {
+        code: {
+            "confidence": t.get("confidence", "L"),
+            "minerals_wt_pct": t.get("minerals_wt_pct", {}),
+        }
+        for code, t in lookup["types"].items()
+    }
+    mineral_yields = {m: {el: y for el, y in v.items() if el in ELEMENTS} for m, v in yields.items()}
+
     out = {
         "source": {
             "manufacturing_dag": MFG_DAG_PATH.name,
@@ -161,11 +176,15 @@ def main() -> None:
             "Hydrogen includes the hydrogen held in water.",
             "Classes containing X use the albedo split: < 0.075 P, 0.075-0.30 M, > 0.30 E, missing ?.",
             "The DAG has no quantities, so each required element is weighted equally.",
+            "types and mineral_yield_wt_pct let the UI resample class compositions (Monte Carlo).",
         ],
         "x_albedo_split": {"P_below": 0.075, "E_above": 0.30},
         "elements": [{"id": k, "label": v} for k, v in ELEMENTS.items()],
         "groups": [g for g, _ in GROUPS],
         "scenarios": scenarios,
+        "types": types,
+        "mineral_yield_wt_pct": mineral_yields,
+        "h_in_water": H_IN_WATER,
         "externals": {
             ext: {
                 "label": ext_label(ext),

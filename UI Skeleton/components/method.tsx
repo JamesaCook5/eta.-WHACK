@@ -6,17 +6,17 @@ const CARDS = [
   },
   {
     title: 'Placement',
-    body: 'Each station has an orbit and a position along it. The cost of reaching an asteroid is the cheapest way there: the Δv to match its orbit’s size, shape and tilt, plus a phasing manoeuvre to catch up with it along the orbit within the chosen trip time (≈ ⅔ × arc length ÷ trip time). Reach converts that Δv to thrust time at a fixed 0.01 m/s². The optimizer scores supply inside that reach, refines station orbits and positions with gradients, and tries relocations. Asteroid positions are a snapshot; launch windows and propulsion limits are not modelled.',
+    body: 'Weighted k-means over every filtered asteroid: each asteroid goes to its nearest station, with no distance limit and no sharing, and each station sits at the tonnage-weighted centre of its asteroids. Distance is the Δv to match an asteroid’s orbit (size, shape, tilt) plus the phasing Δv to catch up with it along the orbit within the trip time (≈ ⅔ × arc ÷ trip time). Weight is the tonnes of the product’s inputs in each body. Centaurs and Kuiper-belt objects are left out unless included, because k-means would give each a station.',
     file: 'lib/stations/optimise.ts',
   },
   {
-    title: 'Output',
-    body: 'A station’s output is limited by its scarcest input: for each input it receives a share of the filtered supply, and output follows the smallest share. Supply grows with body size up to 100 km. The DAG gives no quantities yet, so every input counts equally and there is no cost figure.',
+    title: 'Output and ranges',
+    body: 'A station yields what its asteroids contain, in that ratio: magnetite gives iron and oxygen together, so co-products are listed alongside the product’s inputs. Mineral make-ups are uncertain, so a Monte Carlo resamples every class’s mix 1000 times (wider for classes the lookup rates low-confidence) and re-runs k-means each time. Ranges are the 5th–95th percentiles; faint dots on the map show where each station landed.',
     file: 'lib/stations/optimise.ts',
   },
   {
-    title: 'Networks',
-    body: 'Stations making the same product split any asteroid they both reach, so the optimiser spreads them apart rather than stacking them on the richest spot. Stations for different products, and transport between stations, are not modelled yet.',
+    title: 'Not modelled yet',
+    body: 'Extraction rates, transport schedules between stations, launch windows and propulsion limits. Asteroid positions are a snapshot, and the yields are tonnes held, not tonnes per year.',
     file: null,
   },
 ]

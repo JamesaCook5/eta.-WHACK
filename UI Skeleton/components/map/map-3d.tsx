@@ -120,11 +120,11 @@ function AsteroidPoints({
   const geometry = useMemo(() => {
     const g = new THREE.BufferGeometry()
     g.setAttribute('position', new THREE.BufferAttribute(positions, 3))
-    g.setAttribute('aColor', new THREE.BufferAttribute(colors, 3, true))
+    g.setAttribute('aColor', new THREE.BufferAttribute(new Uint8Array(positions.length), 3, true))
     g.setAttribute('aState', new THREE.BufferAttribute(new Float32Array(positions.length / 3).fill(1), 1))
     g.computeBoundingSphere()
     return g
-  }, [positions, colors])
+  }, [positions])
   const material = useMemo(
     () =>
       new THREE.ShaderMaterial({
@@ -141,6 +141,14 @@ function AsteroidPoints({
     material.uniforms.uPixelRatio.value = dpr
     invalidate()
   }, [dpr, material, invalidate])
+
+  // Colours change with the station plan and focus; update them in place.
+  useEffect(() => {
+    const attr = geometry.getAttribute('aColor') as THREE.BufferAttribute
+    if (colors.length === attr.array.length) (attr.array as Uint8Array).set(colors)
+    attr.needsUpdate = true
+    invalidate()
+  }, [colors, geometry, invalidate])
 
   useEffect(() => {
     const state = geometry.getAttribute('aState') as THREE.BufferAttribute
@@ -210,25 +218,29 @@ function scalePoint([x, y, z]: [number, number, number], mode: DistanceScale): [
   return [x * f, y * f, z * f]
 }
 
-/** Lines from each station to its main suppliers. */
-function SupplierLinks({ stations, positions, mode }: { stations: StationOverlay[]; positions: Float32Array; mode: DistanceScale }) {
-  const links = useMemo(
+/** Where each station landed in the Monte Carlo draws: faint dots in its colour. */
+function MonteCarloCloud({ stations, mode }: { stations: StationOverlay[]; mode: DistanceScale }) {
+  const clouds = useMemo(
     () =>
-      stations.map((s) => {
-        const from = scalePoint(s.position, mode)
-        const pts: [number, number, number][] = []
-        for (const idx of s.suppliers) pts.push(from, [positions[idx * 3], positions[idx * 3 + 1], positions[idx * 3 + 2]])
-        return { s, pts }
-      }),
-    [stations, positions, mode],
+      stations
+        .filter((s) => s.cloud && !s.dim)
+        .map((s) => {
+          const xy = s.cloud!
+          const pts = new Float32Array((xy.length / 2) * 3)
+          for (let d = 0; d < xy.length / 2; d++) {
+            const [x, y] = scalePoint([xy[d * 2], xy[d * 2 + 1], 0], mode)
+            pts[d * 3] = x
+            pts[d * 3 + 1] = y
+          }
+          return { s, pts, indices: Array.from({ length: xy.length / 2 }, (_, i) => i) }
+        }),
+    [stations, mode],
   )
   return (
     <>
-      {links.map(({ s, pts }) =>
-        !s.dim && pts.length > 0 ? (
-          <Line key={s.label} points={pts} segments color={s.color} lineWidth={1.5} transparent opacity={0.75} depthTest={false} renderOrder={4} />
-        ) : null,
-      )}
+      {clouds.map(({ s, pts, indices }) => (
+        <Markers key={s.label} positions={pts} indices={indices} size={4} ring={false} color={s.color} order={3} />
+      ))}
     </>
   )
 }
@@ -271,7 +283,7 @@ function Orbits({ mode, stations }: { mode: DistanceScale; stations: StationOver
       }),
     [mode],
   )
-  // Station orbits: a ring of radius a in the ecliptic, and the reach zone around the station.
+  // Station orbits: a ring of radius a in the ecliptic.
   const rings = useMemo(
     () =>
       stations.map((s) => {
@@ -286,13 +298,6 @@ function Orbits({ mode, stations }: { mode: DistanceScale; stations: StationOver
           color: s.color,
           pts,
           dim: s.dim,
-          active: s.active,
-          zone: {
-            r0: scaledRadius(s.zone.aMin, mode),
-            r1: scaledRadius(s.zone.aMax, mode),
-            start: s.zone.start,
-            length: s.zone.end - s.zone.start,
-          },
         }
       }),
     [stations, mode],
@@ -304,19 +309,6 @@ function Orbits({ mode, stations }: { mode: DistanceScale; stations: StationOver
       ))}
       {rings.map((ring) => (
         <group key={ring.key}>
-          {!ring.dim && (
-            // Reach zone: orbits within one reach of the station, around its position.
-            <mesh renderOrder={1}>
-              <ringGeometry args={[ring.zone.r0, ring.zone.r1, 48, 1, ring.zone.start, ring.zone.length]} />
-              <meshBasicMaterial
-                color={ring.color}
-                transparent
-                opacity={ring.active ? 0.3 : 0.2}
-                side={THREE.DoubleSide}
-                depthWrite={false}
-              />
-            </mesh>
-          )}
           <Line
             points={ring.pts}
             color={ring.color}
@@ -505,8 +497,10 @@ function Rig({ mode, extent, rigRef }: { mode: DistanceScale; extent: number; ri
 interface Map3DProps {
   dataset: AsteroidDataset | null
   mask: Uint8Array | null
-  /** Planned stations: position, orbit ring, reach zone and suppliers. */
+  /** Planned stations: position, orbit ring and Monte Carlo positions. */
   stations: StationOverlay[]
+  /** Per-asteroid RGB override (e.g. coloured by station); null for composition colours. */
+  colors: Uint8Array | null
   /** Pulse the station markers (a new plan just arrived). */
   freshStations: boolean
   onStationHover: (k: number) => void
@@ -522,6 +516,7 @@ export function Map3D({
   dataset,
   mask,
   stations,
+  colors: colorOverride,
   freshStations,
   onStationHover,
   onStationClick,
@@ -538,7 +533,8 @@ export function Map3D({
   callbacks.current = { onHover, onSelect }
 
   const positions = useMemo(() => (dataset ? scalePositions(dataset.positions3, mode) : null), [dataset, mode])
-  const colors = useMemo(() => (dataset ? buildColorBuffer(dataset) : null), [dataset])
+  const baseColors = useMemo(() => (dataset ? buildColorBuffer(dataset) : null), [dataset])
+  const colors = colorOverride ?? baseColors
   const hoverSelected = useMemo(() => [hovered, selected].filter((i) => i >= 0), [hovered, selected])
 
   // Fly to the selected asteroid, whether it was picked on the map or in the candidates list.
@@ -617,12 +613,7 @@ export function Map3D({
         {positions && colors && (
           <>
             <AsteroidPoints positions={positions} colors={colors} mask={mask} />
-            {stations
-              .filter((s) => !s.dim)
-              .map((s) => (
-                <Markers key={s.label} positions={positions} indices={s.suppliers} size={15} ring color={s.color} />
-              ))}
-            <SupplierLinks stations={stations} positions={positions} mode={mode} />
+            <MonteCarloCloud stations={stations} mode={mode} />
             <PinProjector points={pinPoints} pins={pinRefs} />
             <Markers positions={positions} indices={hoverSelected} size={8} ring={false} />
             <Picker positions={positions} onHover={handlers.hover} onSelect={handlers.select} />
@@ -709,7 +700,7 @@ export function Map3D({
         ))}
       </div>
 
-      {dataset && <MapLegend dataset={dataset} />}
+      {dataset && !colorOverride && <MapLegend dataset={dataset} />}
     </div>
   )
 }
