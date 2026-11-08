@@ -162,7 +162,7 @@ function AsteroidPoints({
   useEffect(() => () => geometry.dispose(), [geometry])
   useEffect(() => () => material.dispose(), [material])
 
-  return <points geometry={geometry} material={material} frustumCulled={false} />
+  return <points geometry={geometry} material={material} />
 }
 
 function Markers({
@@ -208,7 +208,7 @@ function Markers({
   useEffect(() => () => geometry.dispose(), [geometry])
   useEffect(() => () => material.dispose(), [material])
   if (indices.length === 0) return null
-  return <points geometry={geometry} material={material} frustumCulled={false} renderOrder={order} />
+  return <points geometry={geometry} material={material} renderOrder={order} />
 }
 
 /** Scale a heliocentric point (au) with the distance scale. */

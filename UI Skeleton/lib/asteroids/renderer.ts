@@ -143,6 +143,7 @@ export class AsteroidRenderer {
   private readonly stateBuffer: WebGLBuffer
   private readonly colorBuffer: WebGLBuffer
   private readonly highlightBuffer: WebGLBuffer
+  private readonly visibleBuffer: WebGLBuffer
   private readonly lineVao: WebGLVertexArrayObject
   private readonly lineBuffer: WebGLBuffer
   private readonly sunBuffer: WebGLBuffer
@@ -150,6 +151,8 @@ export class AsteroidRenderer {
   private readonly lineUniforms: Record<string, WebGLUniformLocation | null>
 
   private count = 0
+  private readonly cullCellAu = 0.25
+  private pointGrid = new Map<string, { x: number; y: number; indices: number[] }>()
   private highlightCount = 0
   private ringRanges: { offset: number; count: number; color: [number, number, number] }[] = []
   private hover = -1
@@ -182,6 +185,7 @@ export class AsteroidRenderer {
     this.stateBuffer = gl.createBuffer()!
     this.colorBuffer = gl.createBuffer()!
     this.highlightBuffer = gl.createBuffer()!
+    this.visibleBuffer = gl.createBuffer()!
     this.pointVao = gl.createVertexArray()!
     gl.bindVertexArray(this.pointVao)
     const posLoc = gl.getAttribLocation(this.pointProgram, 'aPos')
@@ -196,7 +200,7 @@ export class AsteroidRenderer {
     gl.bindBuffer(gl.ARRAY_BUFFER, this.colorBuffer)
     gl.enableVertexAttribArray(colorLoc)
     gl.vertexAttribPointer(colorLoc, 3, gl.UNSIGNED_BYTE, true, 0, 0)
-    gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER, this.highlightBuffer)
+    gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER, this.visibleBuffer)
     gl.bindVertexArray(null)
 
     this.lineBuffer = gl.createBuffer()!
@@ -209,6 +213,15 @@ export class AsteroidRenderer {
   setPositions(positions: Float32Array) {
     const gl = this.gl
     this.count = positions.length / 2
+    this.pointGrid.clear()
+    for (let i = 0; i < this.count; i++) {
+      const x = positions[i * 2], y = positions[i * 2 + 1]
+      const cx = Math.floor(x / this.cullCellAu), cy = Math.floor(y / this.cullCellAu)
+      const key = `${cx},${cy}`
+      let cell = this.pointGrid.get(key)
+      if (!cell) this.pointGrid.set(key, (cell = { x: cx, y: cy, indices: [] }))
+      cell.indices.push(i)
+    }
     gl.bindBuffer(gl.ARRAY_BUFFER, this.positionBuffer)
     gl.bufferData(gl.ARRAY_BUFFER, positions, gl.STATIC_DRAW)
     this.setMask(new Uint8Array(this.count).fill(1))
@@ -246,6 +259,7 @@ export class AsteroidRenderer {
     if (indices.length > tail) this.ringRanges.push({ offset: tail, count: indices.length - tail, color: [1, 1, 1] })
     this.highlightCount = indices.length
     gl.bindVertexArray(this.pointVao)
+    gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER, this.highlightBuffer)
     gl.bufferData(gl.ELEMENT_ARRAY_BUFFER, new Uint32Array(indices), gl.DYNAMIC_DRAW)
     gl.bindVertexArray(null)
   }
@@ -328,9 +342,40 @@ export class AsteroidRenderer {
       // (additive blending would wash dense regions out to white).
       gl.blendFunc(gl.SRC_ALPHA, gl.ONE_MINUS_SRC_ALPHA)
       gl.uniform1i(pu.uPass, 0)
-      gl.drawArrays(gl.POINTS, 0, this.count)
+      const margin = Math.max(2, pointSizeCss * 2) / Math.max(view.scale, 1e-9)
+      const halfW = this.width / (2 * view.scale) + margin
+      const halfH = this.height / (2 * view.scale) + margin
+      const x0 = Math.floor((view.cx - halfW) / this.cullCellAu)
+      const x1 = Math.floor((view.cx + halfW) / this.cullCellAu)
+      const y0 = Math.floor((view.cy - halfH) / this.cullCellAu)
+      const y1 = Math.floor((view.cy + halfH) / this.cullCellAu)
+      const cellCount = (x1 - x0 + 1) * (y1 - y0 + 1)
+      const visible: number[] = []
+      const collect = (cell: { x: number; y: number; indices: number[] }) => {
+        const left = cell.x * this.cullCellAu, bottom = cell.y * this.cullCellAu
+        if (left > view.cx + halfW || left + this.cullCellAu < view.cx - halfW || bottom > view.cy + halfH || bottom + this.cullCellAu < view.cy - halfH) return
+        visible.push(...cell.indices)
+      }
+      if (cellCount > this.pointGrid.size * 2) {
+        for (const cell of this.pointGrid.values()) collect(cell)
+      } else {
+        for (let x = x0; x <= x1; x++) for (let y = y0; y <= y1; y++) {
+          const cell = this.pointGrid.get(`${x},${y}`)
+          if (cell) collect(cell)
+        }
+      }
+      if (visible.length < this.count * 0.85) visible.sort((a, b) => a - b)
+      if (visible.length < this.count * 0.85) {
+        gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER, this.visibleBuffer)
+        gl.bufferData(gl.ELEMENT_ARRAY_BUFFER, new Uint32Array(visible), gl.DYNAMIC_DRAW)
+        gl.drawElements(gl.POINTS, visible.length, gl.UNSIGNED_INT, 0)
+        gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER, this.highlightBuffer)
+      } else {
+        gl.drawArrays(gl.POINTS, 0, this.count)
+      }
 
       if (this.highlightCount > 0) {
+        gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER, this.highlightBuffer)
         gl.blendFunc(gl.SRC_ALPHA, gl.ONE_MINUS_SRC_ALPHA)
         gl.uniform1i(pu.uPass, 1)
         for (const range of this.ringRanges) {

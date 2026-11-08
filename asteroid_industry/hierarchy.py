@@ -7,7 +7,7 @@ each stage of the production network sit?
 
 The model is deliberately simple and uses the same physical proxy as the
 single-tier planner: an orbit is embedded in a five-dimensional Euclidean space
-and squared distance stands for the relative cost of reaching it.  No Lambert
+and Euclidean distance approximates the relative transfer cost of reaching it. No Lambert
 solver, launch windows or propellant model is used.
 
 Pipeline
@@ -19,9 +19,9 @@ Pipeline
    null.
 2. Place tier-0 mining/feedstock stations from the asteroid table.
 3. Walk the recipe tree bottom-up.  For every process node, gather the outputs
-   of its child stations as weighted points and run the same weighted k-means.
+   of its child stations as weighted points and run the same weighted k-median.
    The parent station sits at the weighted centre of its inputs.
-4. Return the tree plus stations grouped by tier.
+4. Return the production tree and station list.
 
 This is a planning prototype, not a process simulation: capacity is a simple
 limiting-input calculation and equipment, utilities and time are not yet
@@ -51,9 +51,9 @@ from .stations import (
     TOP_MEMBERS,
     V_EARTH_KMS,
     StationPlanner,
-    _inertia,
-    _kmeans_pp,
-    _lloyd,
+    _weber_cost,
+    _weber_pp,
+    _weber,
     _wrap,
 )
 
@@ -455,7 +455,7 @@ class SourcePoint:
 
 
 class HierarchicalPlanner:
-    """Recursive weighted k-means station placement along the manufacturing DAG."""
+    """Recursive weighted geometric-median station placement along the manufacturing DAG."""
 
     def __init__(self, planner: StationPlanner, recipes: RecipeGraph):
         self.planner = planner
@@ -580,12 +580,12 @@ class HierarchicalPlanner:
 
         best, best_i, iterations = None, math.inf, 0
         for _ in range(RESTARTS):
-            C, labels, it = _lloyd(X, w, _kmeans_pp(X, w, k, rng), MAX_ITER)
+            C, labels, it = _weber(X, w, _weber_pp(X, w, k, rng), MAX_ITER)
             iterations += it
-            inertia = _inertia(X, w, labels, C)
-            if inertia < best_i:
-                best, best_i = C, inertia
-        C, labels, it = _lloyd(X, w, best, MAX_ITER)
+            cost = _weber_cost(X, w, labels, C)
+            if cost < best_i:
+                best, best_i = C, cost
+        C, labels, it = _weber(X, w, best, MAX_ITER)
         iterations += it
 
         held = np.bincount(labels, weights=w, minlength=k)

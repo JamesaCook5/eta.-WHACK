@@ -1,10 +1,10 @@
-"""Station placement for one product: weighted k-means plus a Monte Carlo over
+"""Station placement for one product: weighted k-median plus Monte Carlo over
 asteroid composition.
 
 Space
 -----
-Every planned asteroid is a point in a velocity-like space, so squared distance
-stands for the Δv² needed to get from a station to it::
+Every planned asteroid is a point in a velocity-like space. Euclidean distance
+approximates orbital transfer Δv from a station to a body::
 
     x = (√1.25 ln a, √2 e, √2 sin i, q cos θ, q sin θ)
 
@@ -13,17 +13,16 @@ units of the orbital speed v). θ is the body's heliocentric ecliptic longitude
 at the dataset epoch; catching up Δθ along an orbit within a trip time T costs
 about (2/3)·a·Δθ / T, which in units of v is q·Δθ with q = (2/3)·P / (2π·T),
 P the orbital period. Points on a circle of radius q give that cost for small
-Δθ and keep the space Euclidean, so plain k-means applies.
+Δθ and keep the space Euclidean, so the embedding supports Euclidean-distance optimization.
 
 Clustering
 ----------
 Weight w_j = tonnes of the product's asteroid-sourced elements in body j (mass
-x grade; bodies counted up to ``MINING_DIAMETER_CAP_KM`` across). Weighted
-k-means: every planned asteroid belongs to its nearest station (no distance
-limit, no sharing; on an exact tie the later station takes it) and each station
-sits at the w-weighted mean of its asteroids. k-means++ starts, several
-restarts on a grid summary of the asteroids, best kept, then refined on every
-asteroid.
+x grade; bodies counted up to ``MINING_DIAMETER_CAP_KM`` across).
+The multi-source Weber heuristic assigns every planned asteroid to its nearest
+station and updates each station to the weighted geometric median of its
+assigned points. Weighted k-median++ starts are compared by linear travel cost
+on a grid summary, then the best result is refined on every asteroid.
 
 Output
 ------
@@ -37,7 +36,7 @@ the lookup's values (concentration set by its confidence grade) and the blend
 weights of mixed classes.  Only the composition is resampled; asteroid
 positions, masses and the class assignment are fixed.  Asteroids of the same
 class share that class's draw, because individual assays are needed to justify
-per-object compositions.  k-means is re-run per draw on the grid summary,
+ per-object compositions. The flat planner re-runs its clustering per draw on the grid summary,
 warm-started from the nominal stations so station k stays station k.  All draws
 run together as arrays.  Ranges are the 5th-95th percentiles.
 """
@@ -60,7 +59,7 @@ V_EARTH_KMS = 29.78
 MINING_DIAMETER_CAP_KM = 100.0
 CONFIDENCE_KAPPA = {"H": 200.0, "M": 60.0, "L": 25.0, "VL": 10.0}
 BLEND_KAPPA = 10.0
-RESTARTS = 6
+RESTARTS = 3
 MAX_ITER = 60
 MC_MAX_ITER = 15
 MC_BATCH = 50
@@ -243,7 +242,7 @@ class SamplingModel:
         return grade
 
 
-# ---------------------------------------------------------------- weighted k-means
+# ---------------------------------------------------------------- weighted k-median
 
 
 def _assign(X: np.ndarray, C: np.ndarray, chunk: int = 16384) -> np.ndarray:
@@ -312,6 +311,78 @@ def _kmeans_pp(X: np.ndarray, w: np.ndarray, k: int, rng: np.random.Generator) -
 
 def _inertia(X, w, labels, C) -> float:
     return float((w * ((X - C[labels]) ** 2).sum(1)).sum())
+
+
+def _geometric_median(X: np.ndarray, w: np.ndarray, initial: np.ndarray, max_iter: int = 12) -> np.ndarray:
+    """Weighted geometric median via modified Weiszfeld iterations."""
+    y = initial.astype(float, copy=True)
+    if len(X) <= 1:
+        return X[0].copy() if len(X) else y
+    for _ in range(max_iter):
+        delta = X - y
+        distance = np.linalg.norm(delta, axis=1)
+        coincident = distance <= 1e-12
+        regular = ~coincident
+        if not regular.any():
+            return y
+        inv = w[regular] / distance[regular]
+        target = (X[regular] * inv[:, None]).sum(axis=0) / inv.sum()
+        if coincident.any():
+            residual = (delta[regular] * (w[regular] / distance[regular])[:, None]).sum(axis=0)
+            residual_norm = np.linalg.norm(residual)
+            coincident_weight = w[coincident].sum()
+            if residual_norm <= coincident_weight:
+                return y
+            fraction = coincident_weight / residual_norm
+            updated = (1.0 - fraction) * target + fraction * y
+        else:
+            updated = target
+        if np.linalg.norm(updated - y) <= 1e-4 * (1.0 + np.linalg.norm(y)):
+            return updated
+        y = updated
+    return y
+
+
+def _weber_update(X: np.ndarray, w: np.ndarray, labels: np.ndarray, C: np.ndarray) -> np.ndarray:
+    """Minimize weighted linear travel distance for fixed station assignments."""
+    out = C.copy()
+    for c in range(len(C)):
+        members = labels == c
+        if members.any():
+            out[c] = _geometric_median(X[members], w[members], C[c])
+        else:
+            distances = np.linalg.norm(X - C[labels], axis=1)
+            out[c] = X[int(np.argmax(w * distances))]
+    return out
+
+
+def _weber(X: np.ndarray, w: np.ndarray, C: np.ndarray, max_iter: int):
+    """Lloyd-style k-median descent using nearest-station assignment and Weiszfeld centers."""
+    labels = _assign(X, C)
+    for iteration in range(1, max_iter + 1):
+        C = _weber_update(X, w, labels, C)
+        updated = _assign(X, C)
+        if np.array_equal(updated, labels):
+            break
+        labels = updated
+    return C, labels, iteration
+
+
+def _weber_pp(X: np.ndarray, w: np.ndarray, k: int, rng: np.random.Generator) -> np.ndarray:
+    """Weighted k-median++ seed points, with linear rather than squared distance."""
+    n = len(X)
+    C = [X[rng.choice(n, p=w / w.sum())]]
+    distance = np.linalg.norm(X - C[0], axis=1)
+    for _ in range(1, k):
+        score = w * distance
+        j = rng.choice(n, p=score / score.sum()) if score.sum() > 0 else int(rng.integers(n))
+        C.append(X[j])
+        distance = np.minimum(distance, np.linalg.norm(X - X[j], axis=1))
+    return np.asarray(C)
+
+
+def _weber_cost(X: np.ndarray, w: np.ndarray, labels: np.ndarray, C: np.ndarray) -> float:
+    return float((w * np.linalg.norm(X - C[labels], axis=1)).sum())
 
 
 # ---------------------------------------------------------------- planner
@@ -469,15 +540,15 @@ class StationPlanner:
         S = len(sm.scenario_keys)
         of, cX, cw, cell_scen = self._cells(X, self.phase[rows], w, scen, mass, S)
 
-        # 1. Restarts of weighted k-means++ on the cells, best kept; 2. refine on every asteroid.
+        # 1. Restarts of weighted k-median++ on the cells; 2. refine on every asteroid.
         best, best_i, iterations = None, math.inf, 0
         for _ in range(RESTARTS):
-            C, lab, it = _lloyd(cX, cw, _kmeans_pp(cX, cw, k, rng), MAX_ITER)
+            C, lab, it = _weber(cX, cw, _weber_pp(cX, cw, k, rng), MAX_ITER)
             iterations += it
-            I = _inertia(cX, cw, lab, C)
-            if I < best_i:
-                best, best_i = C, I
-        C, labels, it = _lloyd(X, w, best, MAX_ITER)
+            cost = _weber_cost(cX, cw, lab, C)
+            if cost < best_i:
+                best, best_i = C, cost
+        C, labels, it = _weber(X, w, best, MAX_ITER)
         iterations += it
 
         # Order stations by the tonnage they hold.
@@ -566,14 +637,14 @@ class StationPlanner:
         rng,
         cancelled=None,
     ) -> None:
-        """Re-run k-means on the cells for resampled compositions; add ranges, stability and the cloud.
+        """Re-run the weighted k-median on cells for ranges, stability, and the cloud.
 
-        Each draw is Lloyd's algorithm warm-started from the nominal stations, with
-        Hamerly's bounds so a cell is only compared with every station when its
+        Each draw is warm-started from the nominal stations, with Hamerly's bounds
+        so a cell is only compared with every station when its
         nearest one could have changed: per cell an upper bound on the distance to
         its own station and a lower bound on the distance to any other. Draws move
         the stations only a little, so most cells are never rechecked. The result
-        is exactly what plain Lloyd iterations would give.
+        center updates use modified Weiszfeld iterations for weighted geometric medians.
 
         Only the modeled mineral compositions and mixed-class blend weights are
         resampled.  Asteroid identities, taxonomy, masses, and orbits remain
@@ -581,7 +652,7 @@ class StationPlanner:
         scenario's draw.
         """
         sm = self.sampling
-        k, dim = C0.shape
+        k = C0.shape[0]
         n_cells = len(cX)
         E = len(sm.elements)
         S = cell_scen.shape[1]
@@ -604,26 +675,26 @@ class StationPlanner:
         beyond0 = np.sort(dist0, axis=1)[:, L] if L < k else np.full(n_cells, np.inf)
 
         def cluster(cw: np.ndarray):
-            """Lloyd from the nominal stations for each draw's cell weights cw (D, cells)."""
+            """Warm-start the multi-source Weber solve for each draw's cell weights."""
             D = len(cw)
-            weighted_x = cw[:, :, None] * cX[None]  # (D, cells, dim), fixed for the batch
             lab = np.tile(start, (D, 1))
             upper = np.tile(upper0, (D, 1))
             lower = np.tile(lower0, (D, 1))
             C = np.tile(C0, (D, 1, 1))
-            offset = (np.arange(D) * k)[:, None]
             active = np.arange(D)  # draws still changing
             for _ in range(MC_MAX_ITER):
                 A = len(active)
                 la, ua, lb = lab[active], upper[active], lower[active]
-                idx = (la + offset[:A]).ravel()
-                wk = np.bincount(idx, weights=cw[active].ravel(), minlength=A * k).reshape(A, k)
-                sums = np.stack(
-                    [np.bincount(idx, weights=weighted_x[active, :, t].ravel(), minlength=A * k) for t in range(dim)],
-                    axis=1,
-                ).reshape(A, k, dim)
-                full = wk > 0
-                C_new = np.where(full[..., None], sums / np.where(full, wk, 1.0)[..., None], C[active])
+                C_new = C[active].copy()
+                for local, draw in enumerate(active):
+                    for station in range(k):
+                        members = la[local] == station
+                        if members.any():
+                            point_weights = cw[draw, members]
+                            if point_weights.sum() > 0:
+                                C_new[local, station] = _geometric_median(
+                                    cX[members], point_weights, C[draw, station]
+                                )
                 moved = np.sqrt(((C_new - C[active]) ** 2).sum(-1))  # (A, k)
                 C[active] = C_new
                 ua += np.take_along_axis(moved, la, axis=1)

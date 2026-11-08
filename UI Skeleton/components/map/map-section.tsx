@@ -131,7 +131,7 @@ export function MapSection() {
         : null,
     [product, packedMask, planSettings.stations, planSettings.tripYears, planSettings.includeOuter],
   )
-  // The flat planner's k-means and Monte Carlo cloud are irrelevant in
+  // The flat planner's one-product plan and Monte Carlo cloud are irrelevant in
   // hierarchical mode; only request it when that layer is selected.
   const plan = useStationPlan(planSettings.hierarchical ? null : planRequest, MONTE_CARLO_DRAWS)
   const [hierarchyResult, setHierarchyResult] = useState<HierarchyResult | null>(null)
@@ -166,7 +166,7 @@ export function MapSection() {
       return hierarchyResult.stations.map((s, k) => {
         const largestOutput = Math.max(0, ...Object.values(s.output))
         const colorBand = largestOutput > 0 && maxOutput > 0
-          ? Math.min(3, Math.max(0, Math.floor(Math.log10(maxOutput / largestOutput) + 1e-10)))
+          ? Math.min(3, Math.max(0, Math.floor(Math.log10(maxOutput / largestOutput) / 3 + 1e-10)))
           : 0
         const title = `${s.material}${s.process ? ` · ${s.process}` : ''}`
         const entries = (obj?: Record<string, number>) => Object.entries(obj ?? {}).sort((a, b) => b[1] - a[1]).slice(0, 3).map(([name, amount]) => `${name} ${amount.toPrecision(3)} t`).join(' · ') || 'none'
@@ -243,7 +243,7 @@ export function MapSection() {
     for (let j = 0; j < visible.length; j++) visible[j] = assignment[j] === 255 ? 0 : 1
     return visible
   }, [dataset, mask, planResult, planSettings.hierarchical, hierarchyResult])
-  // Station layer colours: every asteroid in its station's colour (k-means splits them all).
+  // Station layer colours: every asteroid in its station's colour.
   // Bodies with none of the product's inputs, and ones that change station across the
   // Monte Carlo draws, are drawn darker; other stations go grey while one is in focus.
   const stationColors = useMemo(() => {
@@ -381,10 +381,10 @@ export function MapSection() {
         {planSettings.hierarchical && (
           <div className="mt-2 flex flex-wrap gap-x-3 gap-y-1 font-mono text-[10px] text-white/65" aria-label="Station colors by logarithmic output amount">
             {[
-              ['#b91c1c', '0–10× below max'],
-              ['#ca8a04', '10–100× below max'],
-              ['#16a34a', '100–1,000× below max'],
-              ['#2563eb', '>1,000× below max'],
+              ['#b91c1c', '0–1,000× below max'],
+              ['#ca8a04', '1,000×–1M× below max'],
+              ['#16a34a', '1M×–1B× below max'],
+              ['#2563eb', '>1B× below max'],
             ].map(([color, label]) => (
               <span key={label} className="inline-flex items-center gap-1.5">
                 <span aria-hidden="true" className="size-2 rounded-full" style={{ backgroundColor: color }} />

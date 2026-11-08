@@ -13,7 +13,7 @@
 
 ## Running the app
 
-The station planner (weighted k-means + Monte Carlo) runs in Python; the UI only calls it and draws the result.
+The station planner (weighted k-median / multi-source Weber heuristic) runs in Python; the UI only calls it and draws the result.
 
 ```sh
 pip install -r requirements.txt
