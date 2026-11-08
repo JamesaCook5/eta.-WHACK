@@ -45,10 +45,12 @@ from __future__ import annotations
 import base64
 import json
 import math
+import os
 import time
+from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Iterable
+from typing import Callable, Iterable
 
 import numpy as np
 
@@ -59,7 +61,15 @@ BLEND_KAPPA = 10.0
 RESTARTS = 6
 MAX_ITER = 60
 MC_MAX_ITER = 15
-MC_BATCH = 100
+MC_BATCH = 50
+#: Threads for the Monte Carlo batches.
+MC_THREADS = max(1, min(8, os.cpu_count() or 1))
+#: A rechecked cell is first compared with its this-many nearest nominal stations (exactness is checked).
+MC_NEAREST = 8
+#: Most stations a plan can have (assignment is uint8 with 255 meaning "not planned").
+MAX_STATIONS = 250
+#: Cap on station positions sent for the map cloud (stations × draws).
+CLOUD_POINTS = 60_000
 TOP_MEMBERS = 8
 GRID = (32, 10, 10, 24)  # cells in ln a, e, sin i, longitude
 SQRT_125 = math.sqrt(1.25)
@@ -226,11 +236,28 @@ class SamplingModel:
 # ---------------------------------------------------------------- weighted k-means
 
 
-def _assign(X: np.ndarray, C: np.ndarray) -> np.ndarray:
-    """Nearest centre per point; on an exact tie the later centre wins."""
-    d = ((X[:, None, :] - C[None, :, :]) ** 2).sum(-1)
+def _assign(X: np.ndarray, C: np.ndarray, chunk: int = 16384) -> np.ndarray:
+    """Nearest centre per point; on an exact tie the later centre wins.
+
+    Uses |x − c|² = |x|² − 2x·c + |c|² and drops |x|² (the same for every centre),
+    so the work is one matrix product per chunk of points.
+    """
     k = C.shape[0]
-    return (k - 1 - np.argmin(d[:, ::-1], axis=1)).astype(np.int64)
+    C_rev = C[::-1]
+    c2 = (C_rev**2).sum(1)
+    out = np.empty(len(X), dtype=np.int64)
+    for i in range(0, len(X), chunk):
+        d = c2[None, :] - 2.0 * (X[i : i + chunk] @ C_rev.T)
+        out[i : i + chunk] = k - 1 - np.argmin(d, axis=1)
+    return out
+
+
+def _distances(X: np.ndarray, C: np.ndarray, chunk: int = 4096) -> np.ndarray:
+    """Euclidean distance from every point to every centre, (n, k)."""
+    out = np.empty((len(X), len(C)))
+    for i in range(0, len(X), chunk):
+        out[i : i + chunk] = np.sqrt(((X[i : i + chunk, None, :] - C[None]) ** 2).sum(-1))
+    return out
 
 
 def _update(X: np.ndarray, w: np.ndarray, labels: np.ndarray, C: np.ndarray) -> np.ndarray:
@@ -287,6 +314,10 @@ def _b64(arr: np.ndarray) -> str:
 def _range(values: np.ndarray) -> dict:
     lo, mid, hi = np.percentile(values, [5, 50, 95], axis=0)
     return {"lo": float(lo), "mid": float(mid), "hi": float(hi)}
+
+
+class PlanCancelled(Exception):
+    """Raised inside plan() when ``cancelled()`` turns true (a newer request superseded this one)."""
 
 
 class StationPlanner:
@@ -360,11 +391,12 @@ class StationPlanner:
         draws: int = 1000,
         mask: np.ndarray | None = None,
         seed: int = 7,
+        cancelled: Callable[[], bool] | None = None,
     ) -> dict:
         t0 = time.perf_counter()
         sm = self.sampling
         product = self.products[product_id]
-        k = int(min(max(stations, 1), 32))
+        k = int(min(max(stations, 1), MAX_STATIONS))
         trip_years = max(float(trip_years), 0.1)
         n_all = self.asteroids.count
         planned = self.valid.copy()
@@ -450,7 +482,7 @@ class StationPlanner:
         )
 
         if draws > 0:
-            self._monte_carlo(base, rows, of, cX, cell_scen, C, labels, req, int(draws), rng)
+            self._monte_carlo(base, rows, of, cX, cell_scen, C, labels, req, int(draws), rng, cancelled)
         base["ms"] = (time.perf_counter() - t0) * 1000
         return base
 
@@ -501,13 +533,21 @@ class StationPlanner:
             })
         return result
 
-    def _monte_carlo(self, base, rows, of, cX, cell_scen, C0, labels, req, draws, rng) -> None:
-        """Re-run k-means on the cells for resampled compositions; add ranges, stability and the cloud."""
+    def _monte_carlo(self, base, rows, of, cX, cell_scen, C0, labels, req, draws, rng, cancelled=None) -> None:
+        """Re-run k-means on the cells for resampled compositions; add ranges, stability and the cloud.
+
+        Each draw is Lloyd's algorithm warm-started from the nominal stations, with
+        Hamerly's bounds so a cell is only compared with every station when its
+        nearest one could have changed: per cell an upper bound on the distance to
+        its own station and a lower bound on the distance to any other. Draws move
+        the stations only a little, so most cells are never rechecked. The result
+        is exactly what plain Lloyd iterations would give.
+        """
         sm = self.sampling
         k, dim = C0.shape
         n_cells = len(cX)
         E = len(sm.elements)
-        start = _assign(cX, C0)
+        S = cell_scen.shape[1]
         stay = np.zeros((n_cells, k))
         a_d = np.zeros((draws, k))
         lon_d = np.zeros((draws, k))
@@ -515,62 +555,129 @@ class StationPlanner:
         out_d = np.zeros((draws, k, E))
         nominal_lon = np.arctan2(C0[:, 4], C0[:, 3])
 
-        for b0 in range(0, draws, MC_BATCH):
-            D = min(MC_BATCH, draws - b0)
-            grade = sm.sample_grades(D, rng)  # (D, S, E)
-            cw = (grade[..., req].sum(-1) @ cell_scen.T)  # (D, cells), tonnes of inputs
-            lab = np.broadcast_to(start, (D, n_cells)).copy()
-            C = np.broadcast_to(C0, (D, k, dim)).copy()
+        # Distances to the nominal stations are the same for every draw: nearest, its distance, runner-up.
+        dist0 = _distances(cX, C0)
+        start = np.argmin(dist0, axis=1)
+        upper0 = dist0[np.arange(n_cells), start]
+        lower0 = np.partition(dist0, 1, axis=1)[:, 1] if k > 1 else np.full(n_cells, np.inf)
+        # Each cell's nominal stations nearest first. A station outside a cell's first L
+        # is at least (L-th nominal distance − how far any station has drifted) away.
+        L = min(k, MC_NEAREST)
+        order0 = np.argsort(dist0, axis=1, kind="stable")[:, :L]
+        beyond0 = np.sort(dist0, axis=1)[:, L] if L < k else np.full(n_cells, np.inf)
+
+        def cluster(cw: np.ndarray):
+            """Lloyd from the nominal stations for each draw's cell weights cw (D, cells)."""
+            D = len(cw)
+            weighted_x = cw[:, :, None] * cX[None]  # (D, cells, dim), fixed for the batch
+            lab = np.tile(start, (D, 1))
+            upper = np.tile(upper0, (D, 1))
+            lower = np.tile(lower0, (D, 1))
+            C = np.tile(C0, (D, 1, 1))
             offset = (np.arange(D) * k)[:, None]
-            cXf = cX.astype(np.float32)
-            cwf = cw.astype(np.float32)
-            weighted_x = cwf[:, :, None] * cXf[None]  # (D, cells, dim), fixed for the batch
-            # Iterate only the draws that are still changing.
-            active = np.arange(D)
+            active = np.arange(D)  # draws still changing
             for _ in range(MC_MAX_ITER):
                 A = len(active)
-                idx = (lab[active] + offset[:A]).ravel()
-                wk = np.bincount(idx, weights=cwf[active].ravel(), minlength=A * k).reshape(A, k)
+                la, ua, lb = lab[active], upper[active], lower[active]
+                idx = (la + offset[:A]).ravel()
+                wk = np.bincount(idx, weights=cw[active].ravel(), minlength=A * k).reshape(A, k)
                 sums = np.stack(
                     [np.bincount(idx, weights=weighted_x[active, :, t].ravel(), minlength=A * k) for t in range(dim)],
                     axis=1,
                 ).reshape(A, k, dim)
                 full = wk > 0
-                C[active] = np.where(full[..., None], sums / np.where(full, wk, 1.0)[..., None], C[active])
-                Ca = C[active].astype(np.float32)
-                # Squared distance up to the per-cell constant |x|², which doesn't change the argmin.
-                # (Exact float ties don't occur here, so the plain argmin is used.)
-                d = (Ca**2).sum(-1)[:, None, :] - 2 * (cXf @ Ca.transpose(0, 2, 1))  # (A, cells, k)
-                new = np.argmin(d, axis=2)
-                changed = (new != lab[active]).any(axis=1)
-                lab[active] = new
+                C_new = np.where(full[..., None], sums / np.where(full, wk, 1.0)[..., None], C[active])
+                moved = np.sqrt(((C_new - C[active]) ** 2).sum(-1))  # (A, k)
+                C[active] = C_new
+                ua += np.take_along_axis(moved, la, axis=1)
+                lb -= moved.max(axis=1, keepdims=True)
+                # Cells whose own station might no longer be nearest: tighten the upper bound first.
+                ai, ci = np.nonzero(ua > lb)
+                if ai.size:
+                    ua[ai, ci] = np.sqrt(((C_new[ai, la[ai, ci]] - cX[ci]) ** 2).sum(-1))
+                    keep = ua[ai, ci] > lb[ai, ci]
+                    ai, ci = ai[keep], ci[keep]
+                changed = np.zeros(A, dtype=bool)
+                if ai.size:
+                    # Compare with the cell's nearest nominal stations first.
+                    drift = np.sqrt(((C_new - C0[None]) ** 2).sum(-1)).max(axis=1)  # (A,)
+                    cand = order0[ci]  # (n, L)
+                    dist = np.sqrt(((C_new[ai[:, None], cand] - cX[ci][:, None, :]) ** 2).sum(-1))  # (n, L)
+                    j = np.argmin(dist, axis=1)
+                    d_best = dist[np.arange(len(j)), j]
+                    outside = beyond0[ci] - drift[ai]  # lower bound for every other station
+                    sure = d_best <= outside
+                    a_s, c_s, best = ai[sure], ci[sure], cand[sure, j[sure]]
+                    changed[a_s[best != la[a_s, c_s]]] = True
+                    la[a_s, c_s] = best
+                    ua[a_s, c_s] = d_best[sure]
+                    second = np.partition(dist[sure], 1, axis=1)[:, 1] if L > 1 else np.full(sure.sum(), np.inf)
+                    lb[a_s, c_s] = np.minimum(second, outside[sure])
+                    ai, ci = ai[~sure], ci[~sure]  # these need every station
+                # The rest: every station, one matrix product per draw (|x−c|² = |x|² − 2x·c + |c|²).
+                for a in np.unique(ai):
+                    c_a = ci[ai == a]
+                    Xa = cX[c_a]
+                    d2 = (Xa**2).sum(1)[:, None] - 2.0 * (Xa @ C_new[a].T) + (C_new[a] ** 2).sum(1)[None, :]
+                    best = np.argmin(d2, axis=1)
+                    changed[a] |= bool((best != la[a, c_a]).any())
+                    la[a, c_a] = best
+                    ua[a, c_a] = np.sqrt(((C_new[a, best] - Xa) ** 2).sum(-1))  # exact
+                    if k > 1:
+                        second = np.sqrt(np.maximum(np.partition(d2, 1, axis=1)[:, 1], 0.0))
+                        lb[a, c_a] = second - 1e-9 * (1.0 + second)  # margin for rounding in the product
+                    else:
+                        lb[a, c_a] = np.inf
+                lab[active], upper[active], lower[active] = la, ua, lb
                 active = active[changed]
                 if len(active) == 0:
                     break
+            return lab, C
+
+        def run(grade: np.ndarray):
+            if cancelled is not None and cancelled():
+                raise PlanCancelled
+            cw = grade[..., req].sum(-1) @ cell_scen.T  # (D, cells), tonnes of inputs
+            return (cw, *cluster(cw))
+
+        # Sample every batch up front (one RNG stream, so results don't depend on threading),
+        # then cluster the batches in parallel: numpy releases the GIL in the heavy parts.
+        batches = [(b0, min(MC_BATCH, draws - b0)) for b0 in range(0, draws, MC_BATCH)]
+        grades = [sm.sample_grades(D, rng) for _, D in batches]
+        with ThreadPoolExecutor(max_workers=MC_THREADS) as pool:
+            results = list(pool.map(run, grades))
+        for (b0, D), grade, (cw, lab, C) in zip(batches, grades, results):
+            offset = (np.arange(D) * k)[:, None]
             idx = (lab + offset).ravel()
             wk = np.bincount(idx, weights=cw.ravel(), minlength=D * k).reshape(D, k)
             stay += np.bincount((np.arange(n_cells)[None, :] * k + lab).ravel(), minlength=n_cells * k).reshape(n_cells, k)
-            onehot = np.zeros((D, k, n_cells))
-            onehot[np.arange(D)[:, None], lab, np.arange(n_cells)[None, :]] = 1.0
-            out_d[b0 : b0 + D] = (onehot @ cell_scen) @ grade  # (D, k, E) tonnes per element
+            # Rock mass per station and scenario, then tonnes per element.
+            mass_ks = np.stack(
+                [np.bincount(idx, weights=np.broadcast_to(cell_scen[:, s], (D, n_cells)).ravel(), minlength=D * k) for s in range(S)],
+                axis=1,
+            ).reshape(D, k, S)
+            out_d[b0 : b0 + D] = mass_ks @ grade  # (D, k, E)
             share_d[b0 : b0 + D] = wk / np.maximum(wk.sum(1, keepdims=True), 1e-300)
             a_d[b0 : b0 + D] = np.exp(C[..., 0] / SQRT_125)
             lon = np.arctan2(C[..., 4], C[..., 3])
             # Relative to nominal and unwrapped, so ranges don't jump at ±180°.
             lon_d[b0 : b0 + D] = nominal_lon + _wrap(lon - nominal_lon)
 
+        pct = lambda v: np.percentile(v, [5, 50, 95], axis=0)  # noqa: E731 - (3, …) lo/mid/hi
+        a_p, lon_p, share_p, out_p = pct(a_d), np.degrees(pct(lon_d)), pct(share_d), pct(out_d)
+        as_range = lambda r: {"lo": float(r[0]), "mid": float(r[1]), "hi": float(r[2])}  # noqa: E731
         for c, st in enumerate(base["stations"]):
             st["ranges"] = {
-                "a": _range(a_d[:, c]),
-                "longitude": {key: math.degrees(v) for key, v in _range(lon_d[:, c]).items()},
-                "share": _range(share_d[:, c]),
-                "output": [_range(out_d[:, c, e]) for e in range(E)],
+                "a": as_range(a_p[:, c]),
+                "longitude": as_range(lon_p[:, c]),
+                "share": as_range(share_p[:, c]),
+                "output": [as_range(out_p[:, c, e]) for e in range(E)],
             }
         stability = np.zeros(self.asteroids.count, dtype=np.uint8)
         stability[rows] = np.round(255 * stay[of, labels] / draws).astype(np.uint8)
-        cloud_a = a_d
+        shown = max(1, min(draws, CLOUD_POINTS // k))  # every draw for small k, a sample for large k
         cloud = [
-            np.round(np.column_stack([cloud_a[:, c] * np.cos(lon_d[:, c]), cloud_a[:, c] * np.sin(lon_d[:, c])]).ravel(), 4).tolist()
+            np.round(np.column_stack([a_d[:shown, c] * np.cos(lon_d[:shown, c]), a_d[:shown, c] * np.sin(lon_d[:shown, c])]).ravel(), 4).tolist()
             for c in range(k)
         ]
         base.update(stability=_b64(stability), cloud=cloud, draws=draws)

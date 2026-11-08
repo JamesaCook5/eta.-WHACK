@@ -20,7 +20,10 @@ interface StationPinProps {
 export function StationPin({ station, fresh, onHover, onClick }: StationPinProps) {
   const [hover, setHover] = useState(false)
   // Which side of the pin the card opens on, so it stays inside the map.
-  const [side, setSide] = useState<{ x: 'left' | 'right'; y: 'up' | 'down' }>({ x: 'right', y: 'down' })
+  const [side, setSide] = useState<{ x: 'left' | 'right'; y: 'up' | 'down' }>({
+    x: 'right',
+    y: 'down',
+  })
   const ref = useRef<HTMLButtonElement>(null)
   const show = (on: boolean) => {
     if (on && ref.current) {
@@ -36,7 +39,8 @@ export function StationPin({ station, fresh, onHover, onClick }: StationPinProps
     setHover(on)
     onHover(on)
   }
-  const pulse = station.active || fresh
+  const pulse = station.active || (fresh && !station.compact)
+  const showLabel = !station.compact || station.active || hover
 
   return (
     <div className={cn('relative transition-opacity', station.dim && 'opacity-45')}>
@@ -52,7 +56,7 @@ export function StationPin({ station, fresh, onHover, onClick }: StationPinProps
         onClick={onClick}
         className="group absolute top-0 left-0 flex -translate-x-1/2 -translate-y-1/2 cursor-pointer items-center outline-none"
       >
-        <span className="relative flex size-6 items-center justify-center">
+        <span className={cn('relative flex items-center justify-center', station.compact ? 'size-4' : 'size-6')}>
           {pulse && (
             <span
               aria-hidden="true"
@@ -67,20 +71,28 @@ export function StationPin({ station, fresh, onHover, onClick }: StationPinProps
             aria-hidden="true"
             className={cn(
               'relative rounded-full border-2 border-white shadow-[0_0_0_3px_rgba(0,0,0,0.65)] transition-transform group-focus-visible:ring-2 group-focus-visible:ring-white',
-              station.dim ? 'size-3' : 'size-[18px]',
+              station.compact
+                ? station.active
+                  ? 'size-[14px]'
+                  : 'size-2.5 border'
+                : station.dim
+                  ? 'size-3'
+                  : 'size-[18px]',
               (station.active || hover) && 'scale-125',
             )}
             style={{ backgroundColor: station.color }}
           />
         </span>
       </button>
-      <span
-        aria-hidden="true"
-        className="pointer-events-none absolute top-0 left-3 -translate-y-1/2 rounded-sm px-1 py-px font-mono text-[11px] leading-tight font-semibold text-[#0b0b0b] shadow-[0_0_0_2px_rgba(0,0,0,0.6)]"
-        style={{ backgroundColor: station.color }}
-      >
-        {station.label}
-      </span>
+      {showLabel && (
+        <span
+          aria-hidden="true"
+          className="pointer-events-none absolute top-0 left-3 -translate-y-1/2 rounded-sm px-1 py-px font-mono text-[11px] leading-tight font-semibold text-[#0b0b0b] shadow-[0_0_0_2px_rgba(0,0,0,0.6)]"
+          style={{ backgroundColor: station.color }}
+        >
+          {station.label}
+        </span>
+      )}
       {hover && (
         <div
           role="tooltip"

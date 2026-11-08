@@ -17,7 +17,10 @@ export const DEFAULT_PLAN: PlanSettings = {
   includeOuter: false,
 }
 
-export const STATION_LIMITS = { min: 1, max: 8 }
+/** k in k-means; the Python planner allows up to 250 (assignment is one byte per asteroid). */
+export const STATION_LIMITS = { min: 1, max: 250 }
+/** Quick picks for the station count. */
+export const STATION_PRESETS = [3, 10, 25, 50, 100, 200] as const
 export const TRIP_LIMITS = { min: 0.5, max: 10, step: 0.5 }
 /** Monte Carlo draws over class compositions. */
 export const MONTE_CARLO_DRAWS = 1000

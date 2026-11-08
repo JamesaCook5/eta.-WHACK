@@ -148,7 +148,10 @@ export function MapSection() {
     [productModel],
   )
   const stationCount = planResult ? planResult.stations.length : 0
-  const focusStation = hoverStation >= 0 ? hoverStation : pinnedStation < stationCount ? pinnedStation : -1
+  useEffect(() => setHoverStation(-1), [stationCount])
+  // A hovered pin can unmount without a mouseleave (fewer stations in the new plan), so check both against the count.
+  const focusStation =
+    hoverStation >= 0 && hoverStation < stationCount ? hoverStation : pinnedStation < stationCount ? pinnedStation : -1
   const stationOverlays = useMemo<StationOverlay[]>(() => {
     if (!planResult) return NO_STATIONS
     const result = planResult
@@ -173,6 +176,7 @@ export function MapSection() {
         dim: focusStation >= 0 && focusStation !== k,
         active: focusStation === k,
         pinned: pinnedStation === k,
+        compact: result.stations.length > 24,
         info: {
           title: `S${k + 1} · ${product?.label ?? ''}`,
           lines: [

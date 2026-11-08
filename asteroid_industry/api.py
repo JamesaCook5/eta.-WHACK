@@ -28,7 +28,7 @@ import numpy as np
 from fastapi import FastAPI, HTTPException
 from pydantic import BaseModel, Field
 
-from .stations import StationPlanner
+from .stations import MAX_STATIONS, PlanCancelled, StationPlanner
 
 ROOT = Path(os.environ.get("ETA_ROOT", Path(__file__).resolve().parents[1]))
 ASTEROIDS = Path(os.environ.get("ETA_ASTEROIDS", ROOT / "UI Skeleton" / "public" / "data" / "asteroids.json"))
@@ -44,7 +44,7 @@ def planner() -> StationPlanner:
 
 class PlanRequest(BaseModel):
     product: str
-    stations: int = Field(3, ge=1, le=8)
+    stations: int = Field(3, ge=1, le=MAX_STATIONS)
     trip_years: float = Field(2.0, ge=0.1, le=20.0)
     include_outer: bool = False
     draws: int = Field(1000, ge=0, le=5000)
@@ -54,6 +54,9 @@ class PlanRequest(BaseModel):
 
 _cache: OrderedDict[tuple, dict] = OrderedDict()
 _lock = Lock()
+# Monte Carlo runs are numbered; a newer one makes older ones stop between batches
+# (the UI only ever wants its latest request, and a 200-station run takes seconds).
+_latest_run = 0
 
 
 @app.get("/health")
@@ -82,7 +85,17 @@ def plan(req: PlanRequest) -> dict:
         if key in _cache:
             _cache.move_to_end(key)
             return _cache[key]
-    result = p.plan(req.product, req.stations, req.trip_years, req.include_outer, req.draws, mask)
+    global _latest_run
+    cancelled = None
+    if req.draws > 0:
+        with _lock:
+            _latest_run += 1
+            run = _latest_run
+        cancelled = lambda: run != _latest_run  # noqa: E731
+    try:
+        result = p.plan(req.product, req.stations, req.trip_years, req.include_outer, req.draws, mask, cancelled=cancelled)
+    except PlanCancelled:
+        raise HTTPException(409, "Superseded by a newer request") from None
     with _lock:
         _cache[key] = result
         while len(_cache) > CACHE_SIZE:

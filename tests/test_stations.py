@@ -66,6 +66,13 @@ class PlannerTests(unittest.TestCase):
         self.assertEqual(len(result["cloud"]), 3)
         self.assertEqual(len(result["cloud"][0]), 2 * 200)
 
+    def test_hundreds_of_stations(self):
+        result = self.planner.plan("steel", stations=200, draws=50)
+        self.assertEqual(len(result["stations"]), 200)
+        assignment = self.decode(result["assignment"])
+        self.assertEqual(int(assignment[assignment < 255].max()), 199)
+        self.assertTrue(all("ranges" in s for s in result["stations"]))
+
     def test_products_without_asteroid_inputs_return_no_stations(self):
         result = self.planner.plan("polyimide", stations=3)
         self.assertEqual(result["stations"], [])

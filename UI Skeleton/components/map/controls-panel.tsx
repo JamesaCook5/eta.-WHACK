@@ -1,13 +1,19 @@
 'use client'
 
-import { useMemo, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { cn } from '@/lib/utils'
 import type { AsteroidDataset } from '@/lib/asteroids/types'
 import { classGroupKey, type AsteroidFilters } from '@/lib/asteroids/filters'
-import { CATEGORIES, CATEGORY_IDS, candidateCategories, classColor, type CategoryId } from '@/lib/asteroids/class-colors'
+import {
+  CATEGORIES,
+  CATEGORY_IDS,
+  candidateCategories,
+  classColor,
+  type CategoryId,
+} from '@/lib/asteroids/class-colors'
 import { REGIONS } from '@/lib/asteroids/regions'
 import type { ProductEntry } from '@/lib/stations/product-supply'
-import { STATION_LIMITS, TRIP_LIMITS, type PlanSettings } from '@/lib/stations/settings'
+import { STATION_LIMITS, STATION_PRESETS, TRIP_LIMITS, type PlanSettings } from '@/lib/stations/settings'
 import { RangeField, ValueField } from './range-field'
 
 const formatDiameter = (log: number) => {
@@ -104,7 +110,12 @@ function ProductPicker({
                     )}
                   >
                     <span className="min-w-0 truncate">{p.label}</span>
-                    <span className={cn('shrink-0 font-mono text-[10px] tabular-nums', active ? 'text-[#0e0e0e]/60' : 'text-white/40')}>
+                    <span
+                      className={cn(
+                        'shrink-0 font-mono text-[10px] tabular-nums',
+                        active ? 'text-[#0e0e0e]/60' : 'text-white/40',
+                      )}
+                    >
                       {p.elements.length > 0 ? `${p.elements.length} in` : 'imported'}
                     </span>
                   </button>
@@ -158,7 +169,13 @@ export function ControlsPanel({
         const classIndex = Math.floor(key / CATEGORY_IDS.length)
         const category = CATEGORY_IDS[key % CATEGORY_IDS.length]
         const name = dataset.classes[classIndex]
-        return { key, name, category, count, mixed: candidateCategories(name).length > 1 }
+        return {
+          key,
+          name,
+          category,
+          count,
+          mixed: candidateCategories(name).length > 1,
+        }
       })
       .sort((a, b) => b.count - a.count)
   }, [dataset])
@@ -185,35 +202,20 @@ export function ControlsPanel({
   const toggle = (list: number[], value: number) =>
     list.includes(value) ? list.filter((v) => v !== value) : [...list, value]
 
-  const setPlan = <K extends keyof PlanSettings>(key: K, value: PlanSettings[K]) => onPlanChange({ ...plan, [key]: value })
+  const setPlan = <K extends keyof PlanSettings>(key: K, value: PlanSettings[K]) =>
+    onPlanChange({ ...plan, [key]: value })
 
   return (
     <div className={cn('flex flex-col gap-8', className)}>
       <section aria-labelledby="station-label" className="flex flex-col gap-6">
         <SectionLabel id="station-label">Stations</SectionLabel>
-        <ProductPicker products={products} groups={productGroups} value={plan.productId} onChange={(id) => setPlan('productId', id)} />
-        <div className="flex flex-col gap-2">
-          <span id="station-count-label" className="text-sm text-white/80">
-            Stations
-          </span>
-          <div role="radiogroup" aria-labelledby="station-count-label" className="flex gap-1 rounded-md bg-white/5 p-1">
-            {Array.from({ length: STATION_LIMITS.max - STATION_LIMITS.min + 1 }, (_, i) => i + STATION_LIMITS.min).map((n) => (
-              <button
-                key={n}
-                type="button"
-                role="radio"
-                aria-checked={plan.stations === n}
-                onClick={() => setPlan('stations', n)}
-                className={cn(
-                  'h-8 flex-1 rounded-md font-mono text-xs transition-colors',
-                  plan.stations === n ? 'bg-white text-[#0e0e0e]' : 'text-white/75 hover:bg-white/10 hover:text-white',
-                )}
-              >
-                {n}
-              </button>
-            ))}
-          </div>
-        </div>
+        <ProductPicker
+          products={products}
+          groups={productGroups}
+          value={plan.productId}
+          onChange={(id) => setPlan('productId', id)}
+        />
+        <StationCount value={plan.stations} onChange={(n) => setPlan('stations', n)} />
         <div className="flex flex-col gap-2">
           <ValueField
             id="station-trip"
@@ -278,12 +280,20 @@ export function ControlsPanel({
                       title={`${cat.count.toLocaleString()} asteroids in ${cat.members.length} classes`}
                       className={cn(
                         'inline-flex h-7 items-center gap-1.5 rounded-md px-2 text-xs transition-colors',
-                        expanded ? 'bg-white/16 text-white' : 'bg-white/6 text-white/80 hover:bg-white/12 hover:text-white',
+                        expanded
+                          ? 'bg-white/16 text-white'
+                          : 'bg-white/6 text-white/80 hover:bg-white/12 hover:text-white',
                       )}
                     >
                       <span aria-hidden="true" className="flex -space-x-0.5">
                         {cat.members.slice(0, 3).map((g) => (
-                          <span key={g.key} className="size-2 rounded-full" style={{ backgroundColor: classColor(g.name, g.category) }} />
+                          <span
+                            key={g.key}
+                            className="size-2 rounded-full"
+                            style={{
+                              backgroundColor: classColor(g.name, g.category),
+                            }}
+                          />
                         ))}
                       </span>
                       {cat.label}
@@ -314,7 +324,12 @@ export function ControlsPanel({
                     <Chip
                       key={g.key}
                       active={filters.classes.includes(g.key)}
-                      onClick={() => onFiltersChange({ ...filters, classes: toggle(filters.classes, g.key) })}
+                      onClick={() =>
+                        onFiltersChange({
+                          ...filters,
+                          classes: toggle(filters.classes, g.key),
+                        })
+                      }
                       title={
                         g.mixed
                           ? `${g.count.toLocaleString()} ${g.name} asteroids placed in ${open.label} by albedo`
@@ -323,7 +338,11 @@ export function ControlsPanel({
                       dot={classColor(g.name, g.category)}
                     >
                       {g.name}
-                      {g.mixed && <span aria-hidden="true" className="text-white/45">*</span>}
+                      {g.mixed && (
+                        <span aria-hidden="true" className="text-white/45">
+                          *
+                        </span>
+                      )}
                     </Chip>
                   ))}
                   {open.members.some((g) => g.mixed) && (
@@ -354,7 +373,12 @@ export function ControlsPanel({
                 <Chip
                   key={name}
                   active={filters.regions.includes(index)}
-                  onClick={() => onFiltersChange({ ...filters, regions: toggle(filters.regions, index) })}
+                  onClick={() =>
+                    onFiltersChange({
+                      ...filters,
+                      regions: toggle(filters.regions, index),
+                    })
+                  }
                   title={dataset ? `${count.toLocaleString()} asteroids` : undefined}
                   disabled={disabled}
                 >
@@ -384,7 +408,12 @@ export function ControlsPanel({
           step={0.01}
           disabled={disabled}
           format={formatDiameter}
-          onChange={(value) => onFiltersChange({ ...filters, diameterLog: { ...filters.diameterLog, value } })}
+          onChange={(value) =>
+            onFiltersChange({
+              ...filters,
+              diameterLog: { ...filters.diameterLog, value },
+            })
+          }
         />
         <RangeField
           id="filter-i"
@@ -393,10 +422,93 @@ export function ControlsPanel({
           step={0.5}
           disabled={disabled}
           format={(v) => `${v.toFixed(1)}°`}
-          onChange={(value) => onFiltersChange({ ...filters, inclination: { ...filters.inclination, value } })}
+          onChange={(value) =>
+            onFiltersChange({
+              ...filters,
+              inclination: { ...filters.inclination, value },
+            })
+          }
         />
       </section>
+    </div>
+  )
+}
 
+/**
+ * Station count, 1–250: a number field (applied on Enter or when it loses focus,
+ * so typing "200" doesn't plan for 2 and 20 on the way), steppers and quick picks.
+ */
+function StationCount({ value, onChange }: { value: number; onChange: (n: number) => void }) {
+  const [draft, setDraft] = useState(String(value))
+  useEffect(() => setDraft(String(value)), [value])
+  const clamp = (n: number) => Math.min(STATION_LIMITS.max, Math.max(STATION_LIMITS.min, Math.round(n)))
+  const commit = () => {
+    const n = Number(draft)
+    if (!Number.isFinite(n) || draft.trim() === '') return setDraft(String(value))
+    const next = clamp(n)
+    setDraft(String(next))
+    if (next !== value) onChange(next)
+  }
+  const stepper =
+    'h-8 w-8 shrink-0 rounded-md font-mono text-sm text-white/75 transition-colors hover:bg-white/10 hover:text-white disabled:opacity-30'
+  return (
+    <div className="flex flex-col gap-2">
+      <div className="flex items-baseline justify-between gap-2">
+        <label htmlFor="station-count" className="text-sm text-white/80">
+          Stations
+        </label>
+        <span className="font-mono text-[11px] text-muted-foreground">
+          {STATION_LIMITS.min}–{STATION_LIMITS.max}
+        </span>
+      </div>
+      <div className="flex items-center gap-1 rounded-md bg-white/5 p-1">
+        <button
+          type="button"
+          aria-label="One fewer station"
+          className={stepper}
+          disabled={value <= STATION_LIMITS.min}
+          onClick={() => onChange(clamp(value - 1))}
+        >
+          −
+        </button>
+        <input
+          id="station-count"
+          type="number"
+          inputMode="numeric"
+          min={STATION_LIMITS.min}
+          max={STATION_LIMITS.max}
+          value={draft}
+          onChange={(e) => setDraft(e.target.value)}
+          onBlur={commit}
+          onKeyDown={(e) => e.key === 'Enter' && commit()}
+          className="h-8 min-w-0 flex-1 rounded-md bg-white/8 text-center font-mono text-sm text-white tabular-nums outline-none focus-visible:ring-1 focus-visible:ring-white/60 [appearance:textfield] [&::-webkit-inner-spin-button]:appearance-none [&::-webkit-outer-spin-button]:appearance-none"
+        />
+        <button
+          type="button"
+          aria-label="One more station"
+          className={stepper}
+          disabled={value >= STATION_LIMITS.max}
+          onClick={() => onChange(clamp(value + 1))}
+        >
+          +
+        </button>
+      </div>
+      <div role="group" aria-label="Quick picks" className="flex gap-1">
+        {STATION_PRESETS.map((n) => (
+          <button
+            key={n}
+            type="button"
+            aria-pressed={value === n}
+            onClick={() => onChange(n)}
+            className={cn(
+              'h-7 flex-1 rounded-md font-mono text-[11px] transition-colors',
+              value === n ? 'bg-white text-[#0e0e0e]' : 'bg-white/5 text-white/70 hover:bg-white/10 hover:text-white',
+            )}
+          >
+            {n}
+          </button>
+        ))}
+      </div>
     </div>
   )
 }
