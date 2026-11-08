@@ -6,8 +6,6 @@ import dynamic from 'next/dynamic'
 import { cn } from '@/lib/utils'
 import { DATASET_URL, DatasetMissingError, loadDataset } from '@/lib/asteroids/load'
 import { applyFilters, defaultFilters, type AsteroidFilters } from '@/lib/asteroids/filters'
-import { rankCandidates } from '@/lib/mission/rank'
-import type { StationParams } from '@/lib/mission/scoring'
 import { Sheet, SheetContent, SheetTitle, SheetTrigger } from '@/components/ui/sheet'
 import { MapCanvas } from './map-canvas'
 
@@ -21,17 +19,17 @@ const Map3D = dynamic(() => import('./map-3d').then((m) => m.Map3D), {
   ),
 })
 import { ControlsPanel } from './controls-panel'
-import { CandidatesPanel } from './candidates-panel'
+import { StationsPanel } from './stations-panel'
 import { SelectedPanel } from './selected-panel'
 import { SupplyPanel } from './supply-panel'
 import { estimateFeedstock, MATERIAL_SUPPLY_URL, loadMaterialSupply, type MaterialSupplyModel } from '@/lib/mission/material-supply'
 import { CATEGORY_IDS, categoryLabel } from '@/lib/asteroids/class-colors'
+import { PRODUCT_SUPPLY_URL, loadProductSupply, prepareProblem, type ProductSupplyModel } from '@/lib/stations/product-supply'
+import { DEFAULT_PLAN, type PlanSettings } from '@/lib/stations/settings'
+import { useStationPlan } from '@/lib/stations/use-station-plan'
+import { stationColor, type StationOverlay } from '@/lib/stations/colors'
 
-const DEFAULT_STATION: StationParams = {
-  product: 'water',
-  feedstockWeight: 0.5,
-  topN: 10,
-}
+const NO_STATIONS: StationOverlay[] = []
 
 /**
  * Full screen for the map and both sidebars. Uses the Fullscreen API where the
@@ -92,11 +90,15 @@ export function MapSection() {
     revalidateOnFocus: false,
     shouldRetryOnError: false,
   })
+  const { data: productModel } = useSWR<ProductSupplyModel>(PRODUCT_SUPPLY_URL, loadProductSupply, {
+    revalidateOnFocus: false,
+    shouldRetryOnError: false,
+  })
   const [filterState, setFilterState] = useState<AsteroidFilters | null>(null)
   const [supplyMode, setSupplyMode] = useState(false)
   const [view3d, setView3d] = useState(false)
   const [mineralId, setMineralId] = useState('hydrated_phyllosilicates')
-  const [station, setStation] = useState<StationParams>(DEFAULT_STATION)
+  const [planSettings, setPlanSettings] = useState<PlanSettings>(DEFAULT_PLAN)
   const [hovered, setHovered] = useState(-1)
   const [selected, setSelected] = useState(-1)
   const shellRef = useRef<HTMLDivElement>(null)
@@ -104,32 +106,63 @@ export function MapSection() {
   const [portalContainer, setPortalContainer] = useState<HTMLElement | null>(null)
   useEffect(() => setPortalContainer(shellRef.current), [])
 
-  const filters = filterState ?? defaultFilters(dataset ?? null)
+  // Memoised so the mask (and the station plan that depends on it) is not rebuilt on every render.
+  const initialFilters = useMemo(() => defaultFilters(dataset ?? null), [dataset])
+  const filters = filterState ?? initialFilters
   const deferredFilters = useDeferredValue(filters)
-  const deferredStation = useDeferredValue(station)
 
   const mask = useMemo(
     () => (dataset ? applyFilters(dataset, deferredFilters) : null),
     [dataset, deferredFilters],
   )
-  const ranked = useMemo(
-    () => (dataset && mask ? rankCandidates(dataset, mask, deferredStation) : []),
-    [dataset, mask, deferredStation],
+
+  // Station plan: the product's DAG inputs → per-asteroid supply → optimiser (in a worker).
+  const product = productModel?.products.find((p) => p.id === planSettings.productId) ?? null
+  const prepared = useMemo(
+    () =>
+      dataset && productModel && product && mask && product.elements.length > 0
+        ? prepareProblem(dataset, productModel, product, mask)
+        : null,
+    [dataset, productModel, product, mask],
   )
-  const candidateIndices = useMemo(() => ranked.map((c) => c.index), [ranked])
+  const solvable = prepared !== null && prepared.elements.every((el) => el.carriers > 0)
+  const plan = useStationPlan(
+    solvable ? prepared.problem : null,
+    { stations: planSettings.stations, reachKmS: planSettings.reachKmS },
+    solvable ? planSettings.productId : null,
+  )
+  const planStale = plan.key !== planSettings.productId || !solvable
+  const stationOverlays = useMemo<StationOverlay[]>(
+    () =>
+      planStale || !plan.result
+        ? NO_STATIONS
+        : plan.result.stations.map((s, k) => ({
+            label: `S${k + 1}`,
+            color: stationColor(k),
+            a: s.a,
+            suppliers: s.suppliers.map((sp) => sp.index),
+          })),
+    [plan.result, planStale],
+  )
   const supplyRows = useMemo(
     () => (dataset && supplyModel ? estimateFeedstock(dataset, supplyModel, mineralId, mask) : []),
     [dataset, supplyModel, mineralId, mask],
   )
   // Supply layer: only bodies with an estimated feedstock for the chosen mineral stay bright.
+  // Station layer: only filtered bodies that carry one of the product's inputs stay bright.
   const mapMask = useMemo(() => {
-    if (!supplyMode || !dataset) return mask
+    if (!dataset) return mask
+    if (supplyMode) {
+      const visible = new Uint8Array(dataset.count)
+      for (const row of supplyRows) visible[row.index] = 1
+      return visible
+    }
+    if (!prepared) return mask
     const visible = new Uint8Array(dataset.count)
-    for (const row of supplyRows) visible[row.index] = 1
+    for (const k of prepared.problem.index) visible[k] = 1
     return visible
-  }, [dataset, mask, supplyMode, supplyRows])
-  // Station rings only make sense for candidates; thousands of supply bodies would cover the map.
-  const mapHighlights = supplyMode ? [] : candidateIndices
+  }, [dataset, mask, supplyMode, supplyRows, prepared])
+  const mapStations = supplyMode ? NO_STATIONS : stationOverlays
   const visibleCount = useMemo(() => (mask ? mask.reduce((n, v) => n + v, 0) : 0), [mask])
 
   const emptyMessage = isLoading
@@ -146,8 +179,10 @@ export function MapSection() {
       filters={filters}
       onFiltersChange={setFilterState}
       onResetFilters={() => setFilterState(null)}
-      station={station}
-      onStationChange={setStation}
+      products={productModel?.products ?? null}
+      groups={productModel?.groups ?? []}
+      plan={planSettings}
+      onPlanChange={setPlanSettings}
     />
   )
 
@@ -175,7 +210,9 @@ export function MapSection() {
               {dataset
                 ? supplyMode
                   ? `${supplyRows.length.toLocaleString()} mapped ${supplyModel?.minerals[mineralId]?.label.toLowerCase() ?? 'feedstock'} bodies`
-                  : `${visibleCount.toLocaleString()} of ${dataset.count.toLocaleString()} match filters`
+                  : prepared
+                    ? `${prepared.problem.n.toLocaleString()} of ${visibleCount.toLocaleString()} filtered bodies carry its inputs`
+                    : `${visibleCount.toLocaleString()} of ${dataset.count.toLocaleString()} match filters`
                 : 'No data'}
             </p>
             <button type="button" onClick={fullscreen.toggle} className="btn glass btn-glass h-8 px-3 text-xs">
@@ -192,7 +229,7 @@ export function MapSection() {
               onClick={() => setSupplyMode(false)}
               className={cn('h-8 rounded-md px-3 text-xs transition-colors', !supplyMode ? 'bg-white text-[#0e0e0e]' : 'text-white/75 hover:bg-white/10 hover:text-white')}
             >
-              Station candidates
+              Station plan
             </button>
             <button
               type="button"
@@ -235,13 +272,13 @@ export function MapSection() {
 
           <div className="flex min-h-0 flex-col gap-3">
             <Sheet>
-              <SheetTrigger className="btn glass btn-glass w-full lg:hidden">Filters and station</SheetTrigger>
+              <SheetTrigger className="btn glass btn-glass w-full lg:hidden">Filters and stations</SheetTrigger>
               <SheetContent
                 side="bottom"
                 container={portalContainer}
                 className="max-h-[85svh] overflow-y-auto rounded-t-md border-0 bg-[#141414] p-5 pt-6 text-white shadow-none"
               >
-                <SheetTitle className="sr-only">Filters and station</SheetTitle>
+                <SheetTitle className="sr-only">Filters and stations</SheetTitle>
                 {controls}
               </SheetContent>
             </Sheet>
@@ -250,7 +287,7 @@ export function MapSection() {
                 <Map3D
                   dataset={dataset ?? null}
                   mask={mapMask}
-                  candidates={mapHighlights}
+                  stations={mapStations}
                   hovered={hovered}
                   selected={selected}
                   onHover={setHovered}
@@ -261,7 +298,7 @@ export function MapSection() {
                 <MapCanvas
                   dataset={dataset ?? null}
                   mask={mapMask}
-                  candidates={mapHighlights}
+                  stations={mapStations}
                   hovered={hovered}
                   selected={selected}
                   onHover={setHovered}
@@ -287,9 +324,13 @@ export function MapSection() {
                 mask={mask}
               />
             ) : (
-              <CandidatesPanel
+              <StationsPanel
                 dataset={dataset ?? null}
-                candidates={ranked}
+                model={productModel ?? null}
+                product={product}
+                elements={prepared?.elements ?? []}
+                plan={plan}
+                stale={planStale}
                 selected={selected}
                 onSelect={setSelected}
                 onHover={setHovered}

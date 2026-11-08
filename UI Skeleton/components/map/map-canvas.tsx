@@ -2,24 +2,40 @@
 
 import { useEffect, useMemo, useRef, useState } from 'react'
 import type { AsteroidDataset } from '@/lib/asteroids/types'
-import { AsteroidRenderer, type MapView, type OrbitLine } from '@/lib/asteroids/renderer'
+import { AsteroidRenderer, type MapView, type OrbitLine, type RingGroup } from '@/lib/asteroids/renderer'
 import { SpatialIndex } from '@/lib/asteroids/spatial-index'
 import { PLANET_ORBITS, orbitPolyline } from '@/lib/mission/bodies'
-import { asteroidLabel } from './candidates-panel'
+import { asteroidLabel } from '@/lib/asteroids/label'
+import { hexToRgb01, type StationOverlay } from '@/lib/stations/colors'
 import { buildColorBuffer } from '@/lib/asteroids/class-colors'
 import { MapLegend } from './map-legend'
+import { StationKey } from './station-key'
 
 const MIN_SCALE = 15
 const MAX_SCALE = 40000
 const FIT_RADIUS_AU = 3.8
 const PICK_RADIUS_PX = 8
 
+const PLANET_ORBIT_COLOR: OrbitLine['color'] = [1, 1, 1, 0.4]
+
+/** Circle of radius a (au) in the ecliptic. */
+function circle(a: number, segments: number) {
+  const points = new Float32Array(segments * 2)
+  for (let s = 0; s < segments; s++) {
+    const t = (s / segments) * Math.PI * 2
+    points[s * 2] = a * Math.cos(t)
+    points[s * 2 + 1] = a * Math.sin(t)
+  }
+  return points
+}
+
 const pointSize = (scale: number) => Math.min(7, Math.max(2, 2 * Math.pow(scale / 120, 0.35)))
 
 interface MapCanvasProps {
   dataset: AsteroidDataset | null
   mask: Uint8Array | null
-  candidates: number[]
+  /** Planned stations: orbit rings plus their suppliers ringed in the station's colour. */
+  stations: StationOverlay[]
   hovered: number
   selected: number
   onHover: (index: number) => void
@@ -30,7 +46,7 @@ interface MapCanvasProps {
 export function MapCanvas({
   dataset,
   mask,
-  candidates,
+  stations,
   hovered,
   selected,
   onHover,
@@ -131,21 +147,32 @@ export function MapCanvas({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [mask, dataset])
 
+  const ringGroups = useMemo<RingGroup[]>(
+    () => stations.map((s) => ({ indices: s.suppliers, color: hexToRgb01(s.color) })),
+    [stations],
+  )
+
   useEffect(() => {
-    rendererRef.current?.setHighlights(candidates, hovered, selected)
+    rendererRef.current?.setHighlights(ringGroups, hovered, selected)
     requestDraw()
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [candidates, hovered, selected, dataset])
+  }, [ringGroups, hovered, selected, dataset])
 
   useEffect(() => {
     const lines: OrbitLine[] = [
-      { points: orbitPolyline(PLANET_ORBITS.earth), color: [1, 1, 1, 0.4] },
-      { points: orbitPolyline(PLANET_ORBITS.mars), color: [1, 1, 1, 0.4] },
+      { points: orbitPolyline(PLANET_ORBITS.earth), color: PLANET_ORBIT_COLOR },
+      { points: orbitPolyline(PLANET_ORBITS.mars), color: PLANET_ORBIT_COLOR },
+      // Station orbits as dotted rings, so they read apart from the planets' solid lines.
+      ...stations.map((s) => ({
+        points: circle(s.a, Math.round(90 + s.a * 40)),
+        color: [...hexToRgb01(s.color), 0.95] as OrbitLine['color'],
+        dotSize: 3,
+      })),
     ]
     rendererRef.current?.setOrbits(lines)
     requestDraw()
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [])
+  }, [stations])
 
   function toWorld(sx: number, sy: number) {
     const { w, h } = sizeRef.current
@@ -313,9 +340,10 @@ export function MapCanvas({
         ))}
       </div>
       {dataset && <MapLegend dataset={dataset} />}
-      <p className="pointer-events-none absolute top-3 left-3 font-mono text-[11px] text-white/55">
-        Sun-centred · x–y plane · au
+      <p className="pointer-events-none absolute top-3 left-3 max-w-[calc(100%-1.5rem)] truncate font-mono text-[11px] text-white/55">
+        Sun-centred · x–y plane · au{stations.length > 0 && ' · dotted rings: station orbits'}
       </p>
+      <StationKey stations={stations} />
     </div>
   )
 }

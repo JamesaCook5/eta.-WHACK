@@ -6,10 +6,9 @@ import type { AsteroidDataset } from '@/lib/asteroids/types'
 import { classGroupKey, type AsteroidFilters } from '@/lib/asteroids/filters'
 import { CATEGORIES, CATEGORY_IDS, candidateCategories, classColor, type CategoryId } from '@/lib/asteroids/class-colors'
 import { REGIONS } from '@/lib/asteroids/regions'
-import type { StationParams } from '@/lib/mission/scoring'
-import { RESOURCES } from '@/lib/mission/resources'
+import type { ProductEntry } from '@/lib/stations/product-supply'
+import { REACH_LIMITS, STATION_LIMITS, type PlanSettings } from '@/lib/stations/settings'
 import { RangeField, ValueField } from './range-field'
-import { Segmented } from './segmented'
 
 const formatDiameter = (log: number) => {
   const d = 10 ** log
@@ -56,13 +55,78 @@ function SectionLabel({ id, children }: { id: string; children: React.ReactNode 
   )
 }
 
+/** Products from the manufacturing DAG, grouped; pressing one plans stations for it. */
+function ProductPicker({
+  products,
+  groups,
+  value,
+  onChange,
+}: {
+  products: ProductEntry[] | null
+  groups: string[]
+  value: string
+  onChange: (id: string) => void
+}) {
+  if (!products) {
+    return <p className="text-xs text-muted-foreground">Loading products from the DAG…</p>
+  }
+  return (
+    <div className="flex flex-col gap-2">
+      <span id="product-label" className="text-sm text-white/80">
+        Product
+      </span>
+      <div
+        role="radiogroup"
+        aria-labelledby="product-label"
+        className="flex max-h-72 flex-col gap-3 overflow-y-auto rounded-md bg-white/4 p-1.5"
+      >
+        {groups.map((group) => {
+          const items = products.filter((p) => p.group === group)
+          if (items.length === 0) return null
+          return (
+            <div key={group} className="flex flex-col gap-0.5">
+              <p className="px-1.5 pt-1 pb-0.5 text-[10px] font-medium tracking-wider text-muted-foreground uppercase">
+                {group}
+              </p>
+              {items.map((p) => {
+                const active = p.id === value
+                return (
+                  <button
+                    key={p.id}
+                    type="button"
+                    role="radio"
+                    aria-checked={active}
+                    onClick={() => onChange(p.id)}
+                    title={`${p.elements.length} asteroid-sourced inputs, ${p.imported.length} imported from Earth`}
+                    className={cn(
+                      'flex items-baseline justify-between gap-2 rounded-md px-1.5 py-1.5 text-left text-xs transition-colors',
+                      active ? 'bg-white text-[#0e0e0e]' : 'text-white/80 hover:bg-white/10 hover:text-white',
+                    )}
+                  >
+                    <span className="min-w-0 truncate">{p.label}</span>
+                    <span className={cn('shrink-0 font-mono text-[10px] tabular-nums', active ? 'text-[#0e0e0e]/60' : 'text-white/40')}>
+                      {p.elements.length > 0 ? `${p.elements.length} in` : 'imported'}
+                    </span>
+                  </button>
+                )
+              })}
+            </div>
+          )
+        })}
+      </div>
+    </div>
+  )
+}
+
 interface ControlsPanelProps {
   dataset: AsteroidDataset | null
   filters: AsteroidFilters
   onFiltersChange: (filters: AsteroidFilters) => void
   onResetFilters: () => void
-  station: StationParams
-  onStationChange: (station: StationParams) => void
+  products: ProductEntry[] | null
+  groups: string[]
+  plan: PlanSettings
+  onPlanChange: (plan: PlanSettings) => void
   className?: string
 }
 
@@ -71,8 +135,10 @@ export function ControlsPanel({
   filters,
   onFiltersChange,
   onResetFilters,
-  station,
-  onStationChange,
+  products,
+  groups: productGroups,
+  plan,
+  onPlanChange,
   className,
 }: ControlsPanelProps) {
   const [openCategory, setOpenCategory] = useState<CategoryId | null>(null)
@@ -119,11 +185,53 @@ export function ControlsPanel({
   const toggle = (list: number[], value: number) =>
     list.includes(value) ? list.filter((v) => v !== value) : [...list, value]
 
-  const setStation = <K extends keyof StationParams>(key: K, value: StationParams[K]) =>
-    onStationChange({ ...station, [key]: value })
+  const setPlan = <K extends keyof PlanSettings>(key: K, value: PlanSettings[K]) => onPlanChange({ ...plan, [key]: value })
 
   return (
     <div className={cn('flex flex-col gap-8', className)}>
+      <section aria-labelledby="station-label" className="flex flex-col gap-6">
+        <SectionLabel id="station-label">Stations</SectionLabel>
+        <ProductPicker products={products} groups={productGroups} value={plan.productId} onChange={(id) => setPlan('productId', id)} />
+        <div className="flex flex-col gap-2">
+          <span id="station-count-label" className="text-sm text-white/80">
+            Stations
+          </span>
+          <div role="radiogroup" aria-labelledby="station-count-label" className="flex gap-1 rounded-md bg-white/5 p-1">
+            {Array.from({ length: STATION_LIMITS.max - STATION_LIMITS.min + 1 }, (_, i) => i + STATION_LIMITS.min).map((n) => (
+              <button
+                key={n}
+                type="button"
+                role="radio"
+                aria-checked={plan.stations === n}
+                onClick={() => setPlan('stations', n)}
+                className={cn(
+                  'h-8 flex-1 rounded-md font-mono text-xs transition-colors',
+                  plan.stations === n ? 'bg-white text-[#0e0e0e]' : 'text-white/75 hover:bg-white/10 hover:text-white',
+                )}
+              >
+                {n}
+              </button>
+            ))}
+          </div>
+        </div>
+        <div className="flex flex-col gap-2">
+          <ValueField
+            id="station-reach"
+            label="Reach"
+            value={plan.reachKmS}
+            min={REACH_LIMITS.min}
+            max={REACH_LIMITS.max}
+            step={REACH_LIMITS.step}
+            format={(v) => `${v.toFixed(2)} km/s`}
+            onChange={(v) => setPlan('reachKmS', v)}
+          />
+          <p className="text-[11px] leading-relaxed text-muted-foreground">
+            Orbit-change budget at which a station still draws on an asteroid. Wider reach pools more supply but makes
+            stations compete for the same bodies.
+          </p>
+        </div>
+      </section>
+
       <section aria-labelledby="filters-label" className="flex flex-col gap-6">
         <div className="flex items-center justify-between">
           <SectionLabel id="filters-label">Filters</SectionLabel>
@@ -275,41 +383,6 @@ export function ControlsPanel({
         />
       </section>
 
-      <section aria-labelledby="station-label" className="flex flex-col gap-6">
-        <SectionLabel id="station-label">Station</SectionLabel>
-        <Segmented
-          label="Product"
-          options={RESOURCES}
-          value={station.product}
-          onChange={(v) => setStation('product', v)}
-        />
-        <div className="flex flex-col gap-2">
-          <ValueField
-            id="station-weight"
-            label="Cost priority"
-            value={Math.round(station.feedstockWeight * 100)}
-            min={0}
-            max={100}
-            step={5}
-            format={(v) => `${100 - v}% · ${v}%`}
-            onChange={(v) => setStation('feedstockWeight', v / 100)}
-          />
-          <div className="flex justify-between font-mono text-[11px] text-muted-foreground">
-            <span>Sunlight (power)</span>
-            <span>Feedstock (size)</span>
-          </div>
-        </div>
-        <ValueField
-          id="station-top-n"
-          label="Candidates shown"
-          value={station.topN}
-          min={1}
-          max={50}
-          step={1}
-          format={(v) => `${v}`}
-          onChange={(v) => setStation('topN', v)}
-        />
-      </section>
     </div>
   )
 }

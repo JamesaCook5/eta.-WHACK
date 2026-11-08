@@ -1,22 +1,22 @@
 const CARDS = [
   {
     title: 'Resource mapping',
-    body: 'Each asteroid is placed in a composition category: Carbon supplies water and volatiles, Metallic supplies metals, Silicates supply bulk silicate. Classes that could be more than one (featureless X-types, and labels such as CX or SQ) are split by each asteroid’s albedo. No yield estimates are used yet.',
-    file: 'lib/mission/resources.ts',
+    body: 'Each product in the manufacturing DAG lists the feedstocks it can draw on. Those map to elements (iron, titanium, phosphorus, water…), and each asteroid gets a grade for every element from its taxonomic class: mineral make-up from the chemical DAG times each mineral’s typical yield. X-type classes are split by albedo. Inputs with no asteroid route are listed as imported from Earth.',
+    file: 'tools/build_product_supply_data.py → lib/stations/product-supply.ts',
   },
   {
     title: 'Placement',
-    body: 'Where a station goes is set with the map filters: orbital region, semi-major axis, inclination and size. Launch and transfer from Earth are out of scope.',
-    file: 'lib/asteroids/regions.ts',
+    body: 'Stations sit in orbit space, not on asteroids. Distance is the orbit-change velocity between a station and an asteroid (the metric used for asteroid families), and a station draws on bodies within its reach. Stations start where a greedy search finds the most output, then move by gradient steps while the reach is narrowed; the weakest station is tried in other places and kept there if total output rises.',
+    file: 'lib/stations/optimise.ts',
   },
   {
-    title: 'Manufacturing cost',
-    body: 'Until the cost model exists, candidates are ranked on two proxies: body size as a stand-in for available feedstock, and sunlight at the orbit (falling as 1/a²) as a stand-in for processing power. The slider sets the balance.',
-    file: 'lib/mission/scoring.ts',
+    title: 'Output',
+    body: 'A station’s output is limited by its scarcest input: for each input it receives a share of the filtered supply, and output follows the smallest share. Supply grows with body size up to 100 km. The DAG gives no quantities yet, so every input counts equally and there is no cost figure.',
+    file: 'lib/stations/optimise.ts',
   },
   {
     title: 'Networks',
-    body: 'Stations are scored one at a time. How several stations would share material between them is not modelled yet.',
+    body: 'Stations making the same product split any asteroid they both reach, so the optimiser spreads them apart rather than stacking them on the richest spot. Stations for different products, and transport between stations, are not modelled yet.',
     file: null,
   },
 ]
@@ -29,8 +29,8 @@ export function Method() {
           Method
         </h2>
         <p className="mt-4 max-w-2xl leading-relaxed text-white/80">
-          The scoring and routing models are placeholders while the algorithms are designed. This is
-          how the explorer currently works.
+          Station placement runs on the DAGs and the asteroid data; cost and routing models are still to
+          come. This is how the explorer currently works.
         </p>
         <ul className="mt-10 grid gap-4 sm:grid-cols-2">
           {CARDS.map((card) => (

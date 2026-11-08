@@ -10,6 +10,14 @@ export type RGBA = [number, number, number, number]
 export interface OrbitLine {
   points: Float32Array
   color: RGBA
+  /** Draw as round dots of this size (CSS px) instead of a thin line. */
+  dotSize?: number
+}
+
+/** Asteroids drawn with a ring of one colour (e.g. the suppliers of one station). */
+export interface RingGroup {
+  indices: number[]
+  color: [number, number, number]
 }
 
 const POINT_VERT = `#version 300 es
@@ -24,6 +32,7 @@ uniform int uPass;
 uniform int uHover;
 uniform int uSelected;
 uniform vec3 uAccent;
+uniform vec3 uRingColor;
 out vec4 vColor;
 out float vSize;
 out float vRing;
@@ -43,9 +52,9 @@ void main() {
     size = uSize * 3.0;
     vColor = vec4(1.0, 1.0, 1.0, 1.0);
   } else {
-    // Candidate stations: white ring around the class-coloured point.
+    // Highlighted asteroids (e.g. a station's suppliers): ring around the class-coloured point.
     size = max(uSize * 4.0, 9.0);
-    vColor = vec4(1.0, 1.0, 1.0, 1.0);
+    vColor = vec4(uRingColor, 1.0);
     vRing = 1.0;
   }
   gl_PointSize = size;
@@ -138,9 +147,10 @@ export class AsteroidRenderer {
 
   private count = 0
   private highlightCount = 0
+  private ringRanges: { offset: number; count: number; color: [number, number, number] }[] = []
   private hover = -1
   private selected = -1
-  private orbits: { offset: number; length: number; color: RGBA }[] = []
+  private orbits: { offset: number; length: number; color: RGBA; dotSize?: number }[] = []
   private width = 1
   private height = 1
   private dpr = 1
@@ -158,7 +168,7 @@ export class AsteroidRenderer {
     const uniforms = (program: WebGLProgram, names: string[]) =>
       Object.fromEntries(names.map((n) => [n, gl.getUniformLocation(program, n)]))
     this.pointUniforms = uniforms(this.pointProgram, [
-      'uCenter', 'uScale', 'uViewport', 'uSize', 'uPass', 'uHover', 'uSelected', 'uAccent',
+      'uCenter', 'uScale', 'uViewport', 'uSize', 'uPass', 'uHover', 'uSelected', 'uAccent', 'uRingColor',
     ])
     this.lineUniforms = uniforms(this.lineProgram, [
       'uCenter', 'uScale', 'uViewport', 'uPointSize', 'uColor', 'uRound',
@@ -214,13 +224,22 @@ export class AsteroidRenderer {
     gl.bufferData(gl.ARRAY_BUFFER, mask, gl.DYNAMIC_DRAW)
   }
 
-  setHighlights(candidates: number[], hover: number, selected: number) {
+  setHighlights(groups: RingGroup[], hover: number, selected: number) {
     const gl = this.gl
     this.hover = hover
     this.selected = selected
-    const indices = [...candidates]
+    const indices: number[] = []
+    this.ringRanges = []
+    for (const group of groups) {
+      if (group.indices.length === 0) continue
+      this.ringRanges.push({ offset: indices.length, count: group.indices.length, color: group.color })
+      indices.push(...group.indices)
+    }
+    // Hover and selection last so they draw on top; the shader picks them out by index.
+    const tail = indices.length
     if (hover >= 0) indices.push(hover)
     if (selected >= 0) indices.push(selected)
+    if (indices.length > tail) this.ringRanges.push({ offset: tail, count: indices.length - tail, color: [1, 1, 1] })
     this.highlightCount = indices.length
     gl.bindVertexArray(this.pointVao)
     gl.bufferData(gl.ELEMENT_ARRAY_BUFFER, new Uint32Array(indices), gl.DYNAMIC_DRAW)
@@ -234,7 +253,7 @@ export class AsteroidRenderer {
     let offset = 0
     this.orbits = lines.map((l) => {
       data.set(l.points, offset)
-      const entry = { offset: offset / 2, length: l.points.length / 2, color: l.color }
+      const entry = { offset: offset / 2, length: l.points.length / 2, color: l.color, dotSize: l.dotSize }
       offset += l.points.length
       return entry
     })
@@ -274,8 +293,10 @@ export class AsteroidRenderer {
     gl.enableVertexAttribArray(lineLoc)
     gl.bindBuffer(gl.ARRAY_BUFFER, this.lineBuffer)
     gl.vertexAttribPointer(lineLoc, 2, gl.FLOAT, false, 0, 0)
+    // Planet orbits under the asteroids; dotted (station) orbits are drawn on top further down.
     gl.uniform1i(lu.uRound, 0)
     for (const orbit of this.orbits) {
+      if (orbit.dotSize) continue
       gl.uniform4f(lu.uColor, ...orbit.color)
       gl.drawArrays(gl.LINE_LOOP, orbit.offset, orbit.length)
     }
@@ -301,13 +322,26 @@ export class AsteroidRenderer {
       if (this.highlightCount > 0) {
         gl.blendFunc(gl.SRC_ALPHA, gl.ONE_MINUS_SRC_ALPHA)
         gl.uniform1i(pu.uPass, 1)
-        gl.drawElements(gl.POINTS, this.highlightCount, gl.UNSIGNED_INT, 0)
+        for (const range of this.ringRanges) {
+          gl.uniform3f(pu.uRingColor, ...range.color)
+          gl.drawElements(gl.POINTS, range.count, gl.UNSIGNED_INT, range.offset * 4)
+        }
       }
     }
 
     gl.useProgram(this.lineProgram)
     gl.blendFunc(gl.SRC_ALPHA, gl.ONE_MINUS_SRC_ALPHA)
     gl.bindVertexArray(this.lineVao)
+    gl.bindBuffer(gl.ARRAY_BUFFER, this.lineBuffer)
+    gl.vertexAttribPointer(lineLoc, 2, gl.FLOAT, false, 0, 0)
+    gl.uniform1i(lu.uRound, 1)
+    for (const orbit of this.orbits) {
+      if (!orbit.dotSize) continue
+      gl.uniform4f(lu.uColor, ...orbit.color)
+      gl.uniform1f(lu.uPointSize, orbit.dotSize * this.dpr)
+      gl.drawArrays(gl.POINTS, orbit.offset, orbit.length)
+    }
+
     gl.bindBuffer(gl.ARRAY_BUFFER, this.sunBuffer)
     gl.vertexAttribPointer(lineLoc, 2, gl.FLOAT, false, 0, 0)
     gl.uniform1i(lu.uRound, 1)

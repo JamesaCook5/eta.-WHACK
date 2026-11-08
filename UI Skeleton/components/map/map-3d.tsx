@@ -8,8 +8,10 @@ import type { AsteroidDataset } from '@/lib/asteroids/types'
 import { buildColorBuffer } from '@/lib/asteroids/class-colors'
 import { PLANET_ORBITS, orbitPolyline } from '@/lib/mission/bodies'
 import { cn } from '@/lib/utils'
-import { asteroidLabel } from './candidates-panel'
+import { asteroidLabel } from '@/lib/asteroids/label'
+import type { StationOverlay } from '@/lib/stations/colors'
 import { MapLegend } from './map-legend'
+import { StationKey } from './station-key'
 
 /**
  * 3D map (React Three Fiber). Heliocentric ecliptic coordinates, z up.
@@ -89,13 +91,14 @@ void main() {
 
 const MARK_FRAG = /* glsl */ `
 uniform float uRing;
+uniform vec3 uColor;
 void main() {
   float d = length(gl_PointCoord - 0.5);
   if (d > 0.5) discard;
   float a = 1.0 - smoothstep(0.44, 0.5, d);
-  if (uRing > 0.5) a *= smoothstep(0.3, 0.36, d); // hollow ring for candidate stations
+  if (uRing > 0.5) a *= smoothstep(0.3, 0.36, d); // hollow ring for a station's suppliers
   if (a <= 0.0) discard;
-  gl_FragColor = vec4(1.0, 1.0, 1.0, a);
+  gl_FragColor = vec4(uColor, a);
 }`
 
 // ---------------------------------------------------------------- scene parts
@@ -151,7 +154,19 @@ function AsteroidPoints({
   return <points geometry={geometry} material={material} frustumCulled={false} />
 }
 
-function Markers({ positions, indices, size, ring }: { positions: Float32Array; indices: number[]; size: number; ring: boolean }) {
+function Markers({
+  positions,
+  indices,
+  size,
+  ring,
+  color = '#ffffff',
+}: {
+  positions: Float32Array
+  indices: number[]
+  size: number
+  ring: boolean
+  color?: string
+}) {
   const dpr = useThree((s) => s.viewport.dpr)
   const geometry = useMemo(() => {
     const data = new Float32Array(indices.length * 3)
@@ -165,12 +180,17 @@ function Markers({ positions, indices, size, ring }: { positions: Float32Array; 
       new THREE.ShaderMaterial({
         vertexShader: MARK_VERT,
         fragmentShader: MARK_FRAG,
-        uniforms: { uSize: { value: size }, uPixelRatio: { value: dpr }, uRing: { value: ring ? 1 : 0 } },
+        uniforms: {
+          uSize: { value: size },
+          uPixelRatio: { value: dpr },
+          uRing: { value: ring ? 1 : 0 },
+          uColor: { value: new THREE.Color(color) },
+        },
         transparent: true,
         depthWrite: false,
         depthTest: false,
       }),
-    [size, dpr, ring],
+    [size, dpr, ring, color],
   )
   useEffect(() => () => geometry.dispose(), [geometry])
   useEffect(() => () => material.dispose(), [material])
@@ -178,7 +198,7 @@ function Markers({ positions, indices, size, ring }: { positions: Float32Array; 
   return <points geometry={geometry} material={material} frustumCulled={false} renderOrder={2} />
 }
 
-function Orbits({ mode }: { mode: DistanceScale }) {
+function Orbits({ mode, stations }: { mode: DistanceScale; stations: StationOverlay[] }) {
   const lines = useMemo(
     () =>
       [PLANET_ORBITS.earth, PLANET_ORBITS.mars].map((orbit) => {
@@ -195,10 +215,37 @@ function Orbits({ mode }: { mode: DistanceScale }) {
       }),
     [mode],
   )
+  // Station orbits: a ring of radius a in the ecliptic (the plan fixes a, e and i, not the orientation).
+  const rings = useMemo(
+    () =>
+      stations.map((s) => {
+        const r = scaledRadius(s.a, mode)
+        const pts: [number, number, number][] = []
+        for (let k = 0; k <= 256; k++) {
+          const t = (k / 256) * Math.PI * 2
+          pts.push([r * Math.cos(t), r * Math.sin(t), 0])
+        }
+        return { key: s.label, color: s.color, pts }
+      }),
+    [stations, mode],
+  )
   return (
     <>
       {lines.map((pts, i) => (
         <Line key={i} points={pts} color="white" transparent opacity={0.35} lineWidth={1} />
+      ))}
+      {rings.map((ring) => (
+        <Line
+          key={ring.key}
+          points={ring.pts}
+          color={ring.color}
+          lineWidth={2.5}
+          dashed
+          dashSize={0.05}
+          gapSize={0.03}
+          depthTest={false}
+          renderOrder={3}
+        />
       ))}
     </>
   )
@@ -374,7 +421,8 @@ function Rig({ mode, rigRef }: { mode: DistanceScale; rigRef: React.RefObject<Ca
 interface Map3DProps {
   dataset: AsteroidDataset | null
   mask: Uint8Array | null
-  candidates: number[]
+  /** Planned stations: orbit rings plus their suppliers ringed in the station's colour. */
+  stations: StationOverlay[]
   hovered: number
   selected: number
   onHover: (index: number) => void
@@ -382,7 +430,7 @@ interface Map3DProps {
   emptyMessage: string | null
 }
 
-export function Map3D({ dataset, mask, candidates, hovered, selected, onHover, onSelect, emptyMessage }: Map3DProps) {
+export function Map3D({ dataset, mask, stations, hovered, selected, onHover, onSelect, emptyMessage }: Map3DProps) {
   const [mode, setMode] = useState<DistanceScale>('compressed')
   const [tooltip, setTooltip] = useState<{ x: number; y: number } | null>(null)
   const rigRef = useRef<CameraRig | null>(null)
@@ -451,12 +499,14 @@ export function Map3D({ dataset, mask, candidates, hovered, selected, onHover, o
         {positions && colors && (
           <>
             <AsteroidPoints positions={positions} colors={colors} mask={mask} />
-            <Markers positions={positions} indices={candidates} size={12} ring />
+            {stations.map((s) => (
+              <Markers key={s.label} positions={positions} indices={s.suppliers} size={12} ring color={s.color} />
+            ))}
             <Markers positions={positions} indices={hoverSelected} size={8} ring={false} />
             <Picker positions={positions} onHover={handlers.hover} onSelect={handlers.select} />
           </>
         )}
-        <Orbits mode={mode} />
+        <Orbits mode={mode} stations={stations} />
         <mesh>
           <sphereGeometry args={[0.025, 16, 16]} />
           <meshBasicMaterial color="white" />
@@ -483,6 +533,7 @@ export function Map3D({ dataset, mask, candidates, hovered, selected, onHover, o
       <p className="pointer-events-none absolute top-3 left-3 max-w-[calc(100%-12rem)] truncate font-mono text-[11px] text-white/55">
         Sun-centred · ecliptic · {mode === 'compressed' ? 'distance shown as √r' : 'true distance (au)'}
       </p>
+      <StationKey stations={stations} className="top-11 max-w-[calc(100%-1.5rem)] sm:top-8 sm:max-w-[calc(100%-12rem)]" />
 
       <div className="absolute top-2 right-2 inline-flex gap-1 rounded-md bg-[#070707]/80 p-1" role="group" aria-label="Distance scale">
         {(['compressed', 'linear'] as const).map((m) => (
